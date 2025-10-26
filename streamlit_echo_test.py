@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
+import openpyxl
 
 # === Configuration - replace with your webhook(s) ===
 N8N_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook-test/echo_agent"
