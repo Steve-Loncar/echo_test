@@ -4,7 +4,7 @@ import requests
 import json
 import time
 
-N8N_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook/echo_agent"  # <- replace
+N8N_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook-test/echo_agent"  # <- replace
 WEBHOOK_SECRET = "WIBBLE"  # <- must match the Function node expectedSecret
 
 st.title("n8n Echo Test")
