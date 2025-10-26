@@ -6,9 +6,16 @@ import json
 import time
 
 N8N_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook-test/echo_agent"  # <- replace if needed
-# Read secret from environment with a fallback for quick local testing.
-# Recommended: set WEBHOOK_SECRET in your environment rather than leaving the fallback.
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "WIBBLE")
+# Read secret from Streamlit Secrets (recommended). Fall back to environment var, then to a local default.
+try:
+    # st.secrets is available only after Streamlit has been imported and initialised
+    WEBHOOK_SECRET = st.secrets.get("WEBHOOK_SECRET", None)
+except Exception:
+    WEBHOOK_SECRET = None
+
+if not WEBHOOK_SECRET:
+    # fallback to environment variable (useful for CI or non-Streamlit hosts)
+    WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "WIBBLE")
 
 st.title("n8n Echo Test")
 
