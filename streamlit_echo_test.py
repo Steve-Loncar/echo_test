@@ -46,7 +46,9 @@ if uploaded:
         # If the taxonomy is hierarchical and stored across multiple columns you might want to preprocess externally.
         node_choice = st.selectbox("Choose taxonomy node", sample_vals)
 else:
-    st.info("Upload an Excel file to select taxonomy nodes.")
+    st.info("Upload an Excel file to select taxonomy nodes. A default node will be used for testing.")
+    # Allow a simple editable default when no Excel is provided.
+    node_choice = st.text_input("Default taxonomy node (used when no Excel uploaded):", value="DEFAULT_NODE")
 
 #
 # 2) Query options
