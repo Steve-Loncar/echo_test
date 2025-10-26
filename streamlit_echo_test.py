@@ -2,6 +2,7 @@
 import streamlit as st
 import requests
 import json
+import time
 
 N8N_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook-test/echo_agent"  # <- replace
 WEBHOOK_SECRET = "REPLACE_WIWIBBLE"  # <- must match the Function node expectedSecret
@@ -10,7 +11,7 @@ st.title("n8n Echo Test")
 
 payload = {
     "test": "hello from streamlit",
-    "timestamp": st.time()
+    "timestamp": time.time()
 }
 
 st.write("Webhook URL:", N8N_WEBHOOK_URL)
