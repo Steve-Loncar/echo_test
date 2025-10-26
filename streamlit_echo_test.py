@@ -120,19 +120,92 @@ if uploaded:
         df = None
 
     if df is not None:
-        st.write("Detected columns:", list(df.columns))
-        # try to pick a sensible default column
-        candidate_cols = [c for c in df.columns if c and str(c).lower() in ("hierarchy", "node", "node_path", "name", "title")]
-        default_col = candidate_cols[0] if candidate_cols else df.columns[0]
-        selected_col = st.selectbox("Which column contains the taxonomy node labels?", df.columns, index=list(df.columns).index(default_col))
-        # show sample values
-        sample_vals = df[selected_col].dropna().astype(str).unique().tolist()
-        # If the taxonomy is hierarchical and stored across multiple columns you might want to preprocess externally.
-        node_choice = st.selectbox("Choose taxonomy node", sample_vals)
+        cols = list(df.columns)
+        st.write("Detected columns:", cols)
+
+        # Heuristics to detect existing useful columns
+        lc = [c.lower().strip() for c in cols]
+        has_path = any(c == "path" for c in lc)
+        has_display = any(c in ("display_name", "displayname") for c in lc)
+        has_node_id = any(c == "node_id" for c in lc)
+
+        st.markdown("#### How would you like to pick taxonomy nodes?")
+        pick_mode = st.radio(
+            "Selection mode",
+            ("Use an existing column (recommended if your file already has `path` or `display_name`)",
+             "Build a full `path` from multiple hierarchy columns",
+             "Pick a single column to use as the node label"),
+            index=0 if (has_path or has_display) else 1
+        )
+
+        # Option: use an existing canonical column (path / display_name / node_id)
+        if pick_mode.startswith("Use an existing"):
+            # prefer path -> display_name -> node_id -> fallback
+            preselect = None
+            if has_path:
+                preselect = cols[lc.index("path")]
+            elif has_display:
+                # find the original column name that matched
+                idx = [i for i, v in enumerate(lc) if v in ("display_name", "displayname")][0]
+                preselect = cols[idx]
+            elif has_node_id:
+                preselect = cols[lc.index("node_id")]
+            else:
+                # fall back to best guess
+                candidate_cols = [c for c in cols if any(k in c.lower() for k in ("hierarchy","node","node_path","name","title","path"))]
+                preselect = candidate_cols[0] if candidate_cols else cols[0]
+
+            selected_col = st.selectbox(
+                "Choose the existing column to use (we recommend `path` or `display_name`):",
+                cols,
+                index=cols.index(preselect)
+            )
+
+            st.caption("Preview (first 20 unique values):")
+            sample_vals = pd.Series(df[selected_col].dropna().astype(str).tolist()).unique()[:20].tolist()
+            st.write(sample_vals)
+            node_choice = st.selectbox("Choose taxonomy node", sample_vals)
+
+        # Option: build path from multiple hierarchy columns
+        elif pick_mode.startswith("Build a full"):
+            # propose likely hierarchy columns in order
+            likely = [c for c in cols if any(k in c.lower() for k in ("main","category","sector","subsector","sub-sub","sub_sub","level","hierarchy"))]
+            # remove 'level' if present (not useful in path join)
+            likely = [c for c in likely if "level" not in c.lower()]
+            if not likely:
+                # fall back to showing all columns for the user to pick from
+                likely = cols.copy()
+
+            st.markdown("Select the columns (top → bottom) that represent the hierarchy. We'll join non-empty cells with ' > '.")
+            picked = st.multiselect("Hierarchy columns (ordered)", options=cols, default=likely[:min(len(likely),4)])
+
+            if len(picked) < 1:
+                st.warning("Pick at least one column to build a path.")
+            else:
+                # build the temporary path column for preview
+                def make_path_row(r):
+                    parts = [str(r[c]).strip() for c in picked if pd.notna(r.get(c)) and str(r.get(c)).strip() != ""]
+                    return " > ".join(parts)
+                df["_tmp_path"] = df.apply(make_path_row, axis=1)
+                sample_paths = pd.Series(df["_tmp_path"].dropna().astype(str).tolist()).unique()[:200].tolist()
+                st.caption("Preview of built paths (first 200 unique):")
+                # allow the user to pick one of the built paths
+                node_choice = st.selectbox("Choose taxonomy node (built path)", sample_paths)
+
+        # Option: pick a single column (simple)
+        else:
+            # pick a single column and use its values as node labels
+            candidate_cols = [c for c in cols if any(k in c.lower() for k in ("node","name","title","display","label"))]
+            default_col = candidate_cols[0] if candidate_cols else cols[0]
+            selected_col = st.selectbox("Which column contains the taxonomy node labels?", cols, index=cols.index(default_col))
+            st.caption("Preview (first 20 unique values):")
+            sample_vals = pd.Series(df[selected_col].dropna().astype(str).tolist()).unique()[:20].tolist()
+            st.write(sample_vals)
+            node_choice = st.selectbox("Choose taxonomy node", sample_vals)
 else:
     st.info("Upload an Excel file to select taxonomy nodes. A default node will be used for testing.")
     # Allow a simple editable default when no Excel is provided.
-    node_choice = st.text_input("Default taxonomy node (used when no Excel uploaded):", value="DEFAULT_NODE")
+    node_choice = st.text_input("Default taxonomy node (used when no Excel uploaded):", value="Aerospace")
 
 #
 # 2) Query options
