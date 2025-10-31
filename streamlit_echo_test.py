@@ -187,18 +187,56 @@ st.markdown("The prompt below is pre-filled with a strict JSON schema for the LL
 default_prompt = """You are a strict JSON-outputting market analyst. Return exactly ONE JSON OBJECT and nothing else (no commentary, no explanation, no code fences).
 
 Schema (MUST be followed exactly):
+
 {
   "node_id": string | null,
   "path": string,
   "display_name": string,
   "level": integer | null,
   "requested_fields": array[string],
-  "results": object,
+  "results": {
+    "summary": string | null,
+    "market_metrics": {
+      "revenue_usd_bn_2023": number | null,
+      "revenue_usd_bn_2024": number | null,
+      "revenue_usd_bn_2025": number | null,
+      "revenue_cagr_percent_2023_2025": number | null,
+      "ebitda_usd_bn_2023": number | null,
+      "ebitda_usd_bn_2024": number | null,
+      "ebitda_usd_bn_2025": number | null,
+      "ebitda_cagr_percent_2023_2025": number | null,
+      "ebitda_margin_percent_2023": number | null,
+      "ebitda_margin_percent_2024": number | null,
+      "ebitda_margin_percent_2025": number | null
+    },
+    "methodology_summary": string | null,
+    "taxonomy_reference": string | null,
+    "sources": [
+      {
+        "title": string,
+        "url": string | null,
+        "publisher": string | null,
+        "year": string | null,
+        "confidence_score": number
+      }
+    ]
+  },
   "evidence": [
-    {"evidence_id": string, "title": string|null, "url": string|null, "type": string|null, "snippet": string|null, "confidence_score": number}
+    {
+      "evidence_id": string,
+      "title": string | null,
+      "url": string | null,
+      "type": string | null,
+      "snippet": string | null,
+      "confidence_score": number
+    }
   ],
   "assertions": [
-    {"claim": string, "supported_by": [ "evidence_id", ... ], "confidence": number}
+    {
+      "claim": string,
+      "supported_by": ["evidence_id", ...],
+      "confidence": number
+    }
   ],
   "notes": string | null,
   "confidence": number,
@@ -213,19 +251,23 @@ Context and placeholders you MUST use:
 - Requested fields: {{required_fields}}
 - Extra context: {{extra_context}}
 - Query depth: {{query_depth}}
-- Retrieved documents (if provided): use only the objects in retrieved_docs; each has id,title,url,snippet,text.
+- Retrieved documents (if provided): use only the objects in retrieved_docs; each has id, title, url, snippet, text.
 
 Rules (MANDATORY):
 1) Output EXACTLY ONE JSON OBJECT conforming to the schema above, nothing else.
 2) For every item in requested_fields include a corresponding key in results. If unknown, set scalar -> null, arrays -> [].
-3) Use retrieved_docs ONLY when supplied. Do not invent URLs. If you assert a source without URL, set url=null and confidence_score <= 0.3.
-4) Evidence objects must reference the retrieved_docs ids where applicable; if evidence is generated, use a new evidence_id and set confidence_score <= 0.5.
-5) All confidence scores must be between 0.0 and 1.0.
-6) timestamp MUST be ISO-8601 UTC (e.g., 2025-10-27T15:21:00Z).
-7) Keep evidence array <= 10 items and order by confidence_score descending.
-8) If retrieval is empty/not provided, set overall confidence <= 0.5 and explain in notes: "No retrieval evidence provided — answers are model-derived and must be verified."
-9) Include units for numeric estimates or companion keys (e.g., market_size_usd + market_size_usd_units).
-10) Do not include any text outside the JSON object.
+3) All financials must be in USD billions unless otherwise stated.
+4) CAGR and margin figures must use FY23–FY25 unless otherwise noted.
+5) Use retrieved_docs ONLY when supplied. Do not invent URLs. If you assert a source without URL, set url=null and confidence_score <= 0.3.
+6) Evidence objects must reference retrieved_docs ids where applicable; if evidence is generated, use a new evidence_id and set confidence_score <= 0.5.
+7) All confidence scores must be between 0.0 and 1.0.
+8) timestamp MUST be ISO-8601 UTC (e.g., 2025-10-27T15:21:00Z).
+9) Keep evidence array <= 10 items, ordered by confidence_score descending.
+10) If retrieval is empty/not provided, set overall confidence <= 0.5 and explain in notes: \"No retrieval evidence provided — answers are model-derived and must be verified.\"
+11) Include methodology_summary describing how market sizing was derived.
+12) Include taxonomy_reference clarifying how this node relates to its parent and siblings.
+13) Do not include any text outside the JSON object.
+14) Refer to the attached document taxonomy_normalized_cleaned.xlsx for the official 5-tier Aerospace & Defence taxonomy. Use it to verify scope boundaries and hierarchical relationships.
 
 """
 
