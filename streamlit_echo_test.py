@@ -161,29 +161,28 @@ st.subheader("Query options")
 DEFAULT_REQUIRED_FIELDS = ["summary", "sources"]
 DEFAULT_QUERY_DEPTH = 3
 
-# Extra context box (explicit, separate)
-extra_context = st.text_area("Extra context / constraints (optional)", height=100)
+# 1) Global context (editable, pre-filled)
+default_global_context = """We are conducting a systematic, node-by-node analysis of the global Aerospace & Defence industry.
+This industry is organized into a 5-tier hierarchical taxonomy:
+1. Total — The overall Aerospace & Defence industry.
+2. Main Categories — Aerospace and Defence.
+3. Sectors — Subdivisions within each Main Category.
+4. Sub-Sectors — Granular specializations within each Sector.
+5. Sub-Sub-Sectors — Final level nodes, which may contain pure-play or adjacent market players.
 
-# Perplexity model selector (simple + 'Other' option)
-st.markdown("### LLM model & settings")
-_model_choice = st.selectbox("Perplexity model (choose or pick Other to type)", ["perplexity (default)", "Other..."], index=0)
-if _model_choice == "Other...":
-    model_name = st.text_input("Perplexity model name", value="perplexity")
-else:
-    model_name = "perplexity"
+Each node represents a distinct scope of analysis. Nodes are independent — data, players, and commentary
+should be limited to the node’s direct scope and immediate children only.
 
-temperature = st.slider("Temperature (determinism)", min_value=0.0, max_value=1.0, value=0.0, step=0.05,
-                        help="Lower = more deterministic. Use 0 for structured JSON outputs.")
-max_tokens = st.number_input("Max tokens", min_value=256, max_value=8000, value=1500,
-                             help="Max tokens to request from the model. Increase if you expect long outputs.")
+All financials are in USD billions unless otherwise stated.
+All CAGR and margin figures are FY23–FY25 unless otherwise noted.
 
-include_retrieval = st.checkbox("Include retrieval (top-k docs) before sending to LLM", value=False,
-                                help="If enabled, n8n should run a retriever and include retrieved_docs in the prompt.")
-priority = st.selectbox("Priority", ["normal", "high", "low"], index=0,
-                        help="Tag the job priority; can be used by downstream schedulers or model routing.")
+You must respect taxonomy boundaries — do not merge, rename, or infer data from unrelated nodes.
+"""
+global_context = st.text_area("Global context (applies to all nodes in this run)", value=default_global_context, height=260)
 
+# 2) Prompt editor (default strict JSON prompt)
 st.markdown("### Prompt editor")
-st.markdown("The prompt below is pre-filled with a strict JSON schema for the LLM. Edit it to refine what you send to the model. Use placeholders: {{display_name}}, {{path}}, {{node_id}}, {{required_fields}}, {{extra_context}}, {{query_depth}}")
+st.markdown("The prompt below is pre-filled with a strict JSON schema for the LLM. Edit it to refine what you send to the model. Use placeholders: {{display_name}}, {{path}}, {{node_id}}, {{required_fields}}, {{extra_context}}, {{query_depth}}, {{global_context}}")
 
 default_prompt = """You are a strict JSON-outputting market analyst. Return exactly ONE JSON OBJECT and nothing else (no commentary, no explanation, no code fences).
 
@@ -207,6 +206,7 @@ Schema (MUST be followed exactly):
 }
 
 Context and placeholders you MUST use:
+- Global context: {{global_context}}
 - Node display_name: {{display_name}}
 - Node path: {{path}}
 - Node id: {{node_id}}
@@ -232,12 +232,40 @@ END.
 
 prompt_text = st.text_area("Prompt (editable)", value=default_prompt, height=320)
 
+# 3) Extra context (node/run-level, shorter than global)
+extra_context = st.text_area("Extra context / constraints (optional, node-level)", height=100)
+
+# 4) LLM model & simple technical settings (clean, consistent)
+st.markdown("### LLM model & settings")
+_model_choice = st.selectbox("Model (choose or pick Other to type)", ["sonar (default)", "Other..."], index=0)
+if _model_choice == "Other...":
+    model_name = st.text_input("Model name", value="sonar")
+else:
+    model_name = "sonar"
+
+temperature = st.slider("Temperature (determinism)", min_value=0.0, max_value=1.0, value=0.0, step=0.05,
+                        help="Lower = more deterministic. Use 0 for structured JSON outputs.")
+max_tokens = st.number_input("Max tokens", min_value=256, max_value=8000, value=1500,
+                             help="Max tokens to request from the model. Increase if you expect long outputs.")
+
+include_retrieval = st.checkbox("Include retrieval (top-k docs) before sending to LLM", value=False,
+                                help="If enabled, n8n should run a retriever and include retrieved_docs in the prompt.")
+priority = st.selectbox("Priority", ["normal", "high", "low"], index=0,
+                        help="Tag the job priority; can be used by downstream schedulers or model routing.")
+dry_run = st.checkbox("Dry run (don't persist downstream)", value=False, help="If set, results won't be written to datasets downstream.")
+
 # Run / Preview buttons
 col1, col2 = st.columns([1, 1])
 with col1:
     if st.button("Preview merged prompt"):
-        # Show a simple preview of how placeholders will look when merged with the selected node (best-effort)
-        display_preview = default_prompt.replace("{{display_name}}", str(node_choice)).replace("{{path}}", str(node_choice)).replace("{{required_fields}}", str(DEFAULT_REQUIRED_FIELDS)).replace("{{extra_context}}", extra_context).replace("{{query_depth}}", str(DEFAULT_QUERY_DEPTH))
+        # Simple client-side preview: best-effort replace of placeholders with current inputs
+        display_preview = prompt_text
+        display_preview = display_preview.replace("{{global_context}}", str(global_context))
+        display_preview = display_preview.replace("{{display_name}}", str(node_choice))
+        display_preview = display_preview.replace("{{path}}", str(node_choice))
+        display_preview = display_preview.replace("{{required_fields}}", str(DEFAULT_REQUIRED_FIELDS))
+        display_preview = display_preview.replace("{{extra_context}}", str(extra_context))
+        display_preview = display_preview.replace("{{query_depth}}", str(DEFAULT_QUERY_DEPTH))
         st.subheader("Merged prompt preview")
         st.code(display_preview)
 with col2:
@@ -259,6 +287,7 @@ with col2:
                 "rel_depth": 0,
                 "query_depth": int(DEFAULT_QUERY_DEPTH),
                 "required_fields": DEFAULT_REQUIRED_FIELDS,
+                "global_context": global_context,
                 "extra_context": extra_context,
                 "prompt_text": prompt_text,
                 "model_name": model_name,
@@ -266,6 +295,7 @@ with col2:
                 "max_tokens": int(max_tokens),
                 "include_retrieval": bool(include_retrieval),
                 "priority": priority,
+                "dry_run": bool(dry_run),
                 "client_timestamp": time.time()
             }
 
