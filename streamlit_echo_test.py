@@ -154,90 +154,139 @@ else:
     st.info("Upload an Excel file to select taxonomy nodes. A default node will be used for testing.")
     node_choice = st.text_input("Default taxonomy node (used when no Excel uploaded):", value="DEFAULT_NODE")
 
-# 2) Query options
+# === Query options / Prompt editor / Run ===
 st.subheader("Query options")
-# Simplified UI: remove the search-depth slider and explicit fields selector.
+
+# Hidden defaults used by the workflow
 DEFAULT_REQUIRED_FIELDS = ["summary", "sources"]
 DEFAULT_QUERY_DEPTH = 3
-extra_context = st.text_area("Extra context / constraints (optional)", height=120)
+
+# Extra context box (explicit, separate)
+extra_context = st.text_area("Extra context / constraints (optional)", height=100)
+
+# Perplexity model selector (simple + 'Other' option)
+st.markdown("### LLM model & settings")
+_model_choice = st.selectbox("Perplexity model (choose or pick Other to type)", ["perplexity (default)", "Other..."], index=0)
+if _model_choice == "Other...":
+    model_name = st.text_input("Perplexity model name", value="perplexity")
+else:
+    model_name = "perplexity"
+
+temperature = st.slider("Temperature (determinism)", min_value=0.0, max_value=1.0, value=0.0, step=0.05,
+                        help="Lower = more deterministic. Use 0 for structured JSON outputs.")
+max_tokens = st.number_input("Max tokens", min_value=256, max_value=8000, value=1500,
+                             help="Max tokens to request from the model. Increase if you expect long outputs.")
+
+include_retrieval = st.checkbox("Include retrieval (top-k docs) before sending to LLM", value=False,
+                                help="If enabled, n8n should run a retriever and include retrieved_docs in the prompt.")
+priority = st.selectbox("Priority", ["normal", "high", "low"], index=0,
+                        help="Tag the job priority; can be used by downstream schedulers or model routing.")
 
 st.markdown("### Prompt editor")
-st.markdown("The prompt below is pre-filled from the selected node. Edit it to refine what you send to the LLM.")
+st.markdown("The prompt below is pre-filled with a strict JSON schema for the LLM. Edit it to refine what you send to the model. Use placeholders: {{display_name}}, {{path}}, {{node_id}}, {{required_fields}}, {{extra_context}}, {{query_depth}}")
 
-default_prompt = f"""You are a strict JSON-outputting market analyst. Return exactly one JSON object and nothing else.
-Schema:
-{{ "node_id": string|null, "path": string, "display_name": string, "requested_fields": array[string], "results": object, "notes": string|null, "confidence": number, "timestamp": string }}
-Context:
-- Node display_name: {node_choice}
-- Node path: {node_choice}
-- Requested fields: {DEFAULT_REQUIRED_FIELDS}
+default_prompt = """You are a strict JSON-outputting market analyst. Return exactly ONE JSON OBJECT and nothing else (no commentary, no explanation, no code fences).
+
+Schema (MUST be followed exactly):
+{
+  "node_id": string | null,
+  "path": string,
+  "display_name": string,
+  "level": integer | null,
+  "requested_fields": array[string],
+  "results": object,
+  "evidence": [
+    {"evidence_id": string, "title": string|null, "url": string|null, "type": string|null, "snippet": string|null, "confidence_score": number}
+  ],
+  "assertions": [
+    {"claim": string, "supported_by": [ "evidence_id", ... ], "confidence": number}
+  ],
+  "notes": string | null,
+  "confidence": number,
+  "timestamp": string
+}
+
+Context and placeholders you MUST use:
+- Node display_name: {{display_name}}
+- Node path: {{path}}
+- Node id: {{node_id}}
+- Requested fields: {{required_fields}}
 - Extra context: {{extra_context}}
-Rules:
-- Output exactly one JSON object and nothing else.
-- Use null for missing scalars and [] for missing arrays.
+- Query depth: {{query_depth}}
+- Retrieved documents (if provided): use only the objects in retrieved_docs; each has id,title,url,snippet,text.
+
+Rules (MANDATORY):
+1) Output EXACTLY ONE JSON OBJECT conforming to the schema above, nothing else.
+2) For every item in requested_fields include a corresponding key in results. If unknown, set scalar -> null, arrays -> [].
+3) Use retrieved_docs ONLY when supplied. Do not invent URLs. If you assert a source without URL, set url=null and confidence_score <= 0.3.
+4) Evidence objects must reference the retrieved_docs ids where applicable; if evidence is generated, use a new evidence_id and set confidence_score <= 0.5.
+5) All confidence scores must be between 0.0 and 1.0.
+6) timestamp MUST be ISO-8601 UTC (e.g., 2025-10-27T15:21:00Z).
+7) Keep evidence array <= 10 items and order by confidence_score descending.
+8) If retrieval is empty/not provided, set overall confidence <= 0.5 and explain in notes: "No retrieval evidence provided — answers are model-derived and must be verified."
+9) Include units for numeric estimates or companion keys (e.g., market_size_usd + market_size_usd_units).
+10) Do not include any text outside the JSON object.
+
+END.
 """
 
-prompt_text = st.text_area("Prompt (editable)", value=default_prompt, height=260)
+prompt_text = st.text_area("Prompt (editable)", value=default_prompt, height=320)
 
-# 3) Buttons to run query or write to dataset
-if st.button("Run query"):
-    if not node_choice:
-        st.error("No taxonomy node selected. Upload an Excel and select a node first.")
-    else:
-        single_node = {
-            "node_id": "N00001",
-            "path": str(node_choice),
-            "display_name": str(node_choice),
-            "level": None,
-            "parent_id": None
-        }
+# Run / Preview buttons
+col1, col2 = st.columns([1, 1])
+with col1:
+    if st.button("Preview merged prompt"):
+        # Show a simple preview of how placeholders will look when merged with the selected node (best-effort)
+        display_preview = default_prompt.replace("{{display_name}}", str(node_choice)).replace("{{path}}", str(node_choice)).replace("{{required_fields}}", str(DEFAULT_REQUIRED_FIELDS)).replace("{{extra_context}}", extra_context).replace("{{query_depth}}", str(DEFAULT_QUERY_DEPTH))
+        st.subheader("Merged prompt preview")
+        st.code(display_preview)
+with col2:
+    if st.button("Run query"):
+        if not node_choice:
+            st.error("No taxonomy node selected. Upload an Excel and select a node first.")
+        else:
+            single_node = {
+                "node_id": "N00001",
+                "path": str(node_choice),
+                "display_name": str(node_choice),
+                "level": None,
+                "parent_id": None
+            }
 
-        payload = {
-            "taxonomy_node": node_choice,
-            "nodes_to_query": [single_node],
-            "rel_depth": 0,
-            "query_depth": int(DEFAULT_QUERY_DEPTH),
-            "required_fields": DEFAULT_REQUIRED_FIELDS,
-            "extra_context": extra_context,
-            "prompt_text": prompt_text,
-            "client_timestamp": time.time()
-        }
+            payload = {
+                "taxonomy_node": node_choice,
+                "nodes_to_query": [single_node],
+                "rel_depth": 0,
+                "query_depth": int(DEFAULT_QUERY_DEPTH),
+                "required_fields": DEFAULT_REQUIRED_FIELDS,
+                "extra_context": extra_context,
+                "prompt_text": prompt_text,
+                "model_name": model_name,
+                "temperature": float(temperature),
+                "max_tokens": int(max_tokens),
+                "include_retrieval": bool(include_retrieval),
+                "priority": priority,
+                "client_timestamp": time.time()
+            }
 
-        headers = {"X-Webhook-Secret": WEBHOOK_SECRET, "Content-Type": "application/json"}
+            headers = {"X-Webhook-Secret": WEBHOOK_SECRET, "Content-Type": "application/json"}
 
-        try:
-            resp = requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=60)
-            st.write("Status:", resp.status_code)
             try:
-                j = resp.json()
-                st.subheader("Response (JSON)")
-                st.json(j)
-                if isinstance(j, dict) and "rows" in j and isinstance(j["rows"], list) and len(j["rows"]) > 0:
-                    try:
-                        df_rows = pd.DataFrame(j["rows"])
-                        st.subheader("Rows (table)")
-                        st.dataframe(df_rows)
-                    except Exception:
-                        st.write("Rows present but failed to render as table.")
-            except Exception:
-                st.subheader("Raw response")
-                st.text(resp.text)
-        except Exception as e:
-            st.error(f"Request failed: {e}")
-
-# Optional: write to dataset flow (fires to a second webhook)
-if st.button("Write to dataset (example)"):
-    if not node_choice:
-        st.error("No taxonomy node selected.")
-    else:
-        write_payload = {"taxonomy_node": node_choice, "data": {"example_field": "value"}, "client_timestamp": time.time()}
-        headers = {"X-Webhook-Secret": WEBHOOK_SECRET, "Content-Type": "application/json"}
-        try:
-            wr = requests.post(N8N_WRITE_URL, json=write_payload, headers=headers, timeout=30)
-            st.write("Write status:", wr.status_code)
-            try:
-                st.json(wr.json())
-            except Exception:
-                st.text(wr.text)
-        except Exception as e:
-            st.error(f"Write request failed: {e}")
+                resp = requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=120)
+                st.write("Status:", resp.status_code)
+                try:
+                    j = resp.json()
+                    st.subheader("Response (JSON)")
+                    st.json(j)
+                    if isinstance(j, dict) and "rows" in j and isinstance(j["rows"], list) and len(j["rows"]) > 0:
+                        try:
+                            df_rows = pd.DataFrame(j["rows"])
+                            st.subheader("Rows (table)")
+                            st.dataframe(df_rows)
+                        except Exception:
+                            st.write("Rows present but failed to render as table.")
+                except Exception:
+                    st.subheader("Raw response")
+                    st.text(resp.text)
+            except Exception as e:
+                st.error(f"Request failed: {e}")
