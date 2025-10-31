@@ -227,7 +227,6 @@ Rules (MANDATORY):
 9) Include units for numeric estimates or companion keys (e.g., market_size_usd + market_size_usd_units).
 10) Do not include any text outside the JSON object.
 
-END.
 """
 
 prompt_text = st.text_area("Prompt (editable)", value=default_prompt, height=320)
@@ -273,13 +272,97 @@ with col2:
         if not node_choice:
             st.error("No taxonomy node selected. Upload an Excel and select a node first.")
         else:
+            # Resolve actual node fields from the uploaded taxonomy (best-effort)
+            node_id_val = None
+            node_path = str(node_choice)
+            display_name = str(node_choice)
+            level_val = None
+            parent_id_val = None
+            node_row = None
+
+            if df is not None:
+                try:
+                    # 1) Prefer exact match on the user-selected column (selected_col) if available
+                    if 'selected_col' in locals() and selected_col in df.columns:
+                        matches = df[df[selected_col].astype(str) == str(node_choice)]
+                        if not matches.empty:
+                            node_row = matches.iloc[0]
+
+                    # 2) Try common column names for exact matches
+                    if node_row is None:
+                        for colname in ('path', 'display_name', 'name', 'title'):
+                            if colname in df.columns:
+                                matches = df[df[colname].astype(str) == str(node_choice)]
+                                if not matches.empty:
+                                    node_row = matches.iloc[0]
+                                    break
+
+                    # 3) Substring fallback on the selected column
+                    if node_row is None and 'selected_col' in locals() and selected_col in df.columns:
+                        try:
+                            matches = df[df[selected_col].astype(str).str.contains(str(node_choice), na=False, case=False)]
+                            if not matches.empty:
+                                node_row = matches.iloc[0]
+                        except Exception:
+                            pass
+
+                    # 4) Path-prefix fallback
+                    if node_row is None and 'path' in df.columns:
+                        matched = df[df['path'].astype(str).str.startswith(str(node_choice))]
+                        if not matched.empty:
+                            node_row = matched.iloc[0]
+
+                    # 5) Extract fields if we found a row
+                    if node_row is not None:
+                        node_id_val = node_row.get('node_id') or node_row.get('id') or node_row.get('nodeId') or node_row.get('NodeID')
+                        # If no explicit id column, derive a stable id from the dataframe index (best-effort)
+                        if not node_id_val:
+                            try:
+                                idx = int(node_row.name)
+                                node_id_val = f"N{idx:05d}"
+                            except Exception:
+                                node_id_val = None
+
+                        node_path = node_row.get('path') or node_path
+                        if 'selected_col' in locals() and selected_col in node_row:
+                            display_name = node_row.get('display_name') or node_row.get(selected_col) or display_name
+                        else:
+                            display_name = node_row.get('display_name') or display_name
+
+                        try:
+                            level_val = int(node_row['level']) if 'level' in node_row and pd.notna(node_row['level']) else level_val
+                        except Exception:
+                            level_val = level_val
+
+                        parent_id_val = node_row.get('parent_id') or node_row.get('parentId') or parent_id_val
+
+                except Exception as e:
+                    # Non-fatal: keep defaults and surface a warning for debugging
+                    st.warning(f"Node lookup warning: {e}")
+
+            # Final fallback: try deriving id from dataframe index where possible
+            if not node_id_val and df is not None and 'selected_col' in locals() and selected_col in df.columns:
+                try:
+                    idxs = df[df[selected_col].astype(str) == str(node_choice)].index
+                    if len(idxs) > 0:
+                        node_id_val = f"N{int(idxs[0]):05d}"
+                except Exception:
+                    node_id_val = None
+
+            # If still unresolved, leave node_id as None (better than a misleading placeholder)
+            if not node_id_val:
+                node_id_val = None
+
             single_node = {
-                "node_id": "N00001",
-                "path": str(node_choice),
-                "display_name": str(node_choice),
-                "level": None,
-                "parent_id": None
+                "node_id": node_id_val,
+                "path": node_path,
+                "display_name": display_name,
+                "level": level_val,
+                "parent_id": parent_id_val
             }
+
+            # Debug output in the UI so you can confirm what was resolved
+            st.write("Resolved node:", single_node)
 
             payload = {
                 "taxonomy_node": node_choice,
