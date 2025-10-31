@@ -202,6 +202,12 @@ This industry is organized into a 5-tier hierarchical taxonomy:
 4. Sub-Sectors — Granular specializations within each Sector.
 5. Sub-Sub-Sectors — Final level nodes, which may contain pure-play or adjacent market players.
 
+Before performing any analysis, read and interpret the Aerospace & Defence taxonomy from this Excel file:
+https://raw.githubusercontent.com/Steve-Loncar/echo_test/main/taxonomy_normalized_cleaned.xlsx
+
+Use this taxonomy to understand the hierarchy, relationships, and node structure.
+Do not attempt to recreate or re-summarise it — just use it to inform scope and boundaries for the node analyses.
+
 Each node represents a distinct scope of analysis. Nodes are independent — data, players, and commentary
 should be limited to the node’s direct scope and immediate children only.
 
