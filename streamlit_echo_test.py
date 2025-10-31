@@ -1,4 +1,5 @@
 # streamlit_echo_test.py
+import glob
 import os
 import time
 from collections import deque
@@ -127,11 +128,36 @@ st.title("n8n Echo / Query Test")
 st.markdown("Upload your taxonomy Excel, pick a node, set query options, and POST to n8n.")
 
 # 1) Upload taxonomy Excel and choose column to use as node labels
-uploaded = st.file_uploader("Upload taxonomy Excel (.xlsx)", type=["xlsx"])
 node_choice = None
 df = None
 
-if uploaded:
+# Auto-detect taxonomy file in repo (GitHub). Patterns are checked in order.
+LOCAL_TAXONOMY_FILE = None
+patterns = [
+    "./Aero and Defence Taxonomy Structure for n8n.xlsx",
+    "./Aero and Defence Taxonomy Structure for n8n DATA for charts.xlsx",
+    "./taxonomy*.xlsx",
+    "./data/*.xlsx",
+    "./*.xlsx",
+]
+for p in patterns:
+    matches = glob.glob(p)
+    if matches:
+        LOCAL_TAXONOMY_FILE = matches[0]
+        break
+
+if LOCAL_TAXONOMY_FILE:
+    try:
+        df = pd.read_excel(LOCAL_TAXONOMY_FILE, sheet_name=0)
+        st.info(f"Auto-loaded taxonomy from repo file: {os.path.basename(LOCAL_TAXONOMY_FILE)}")
+    except Exception as e:
+        st.warning(f"Auto-load failed ({LOCAL_TAXONOMY_FILE}): {e}")
+        df = None
+
+uploaded = st.file_uploader("Upload taxonomy Excel (.xlsx) — or leave blank to use auto-detected file", type=["xlsx"])
+
+# Only read the uploaded file if auto-load did not already populate df
+if uploaded and df is None:
     try:
         df = pd.read_excel(uploaded, sheet_name=0)
     except Exception as e:
@@ -140,18 +166,24 @@ if uploaded:
 
 if df is not None:
     st.write("Detected columns:", list(df.columns))
-    # try to pick a sensible default column
-    candidate_cols = [c for c in df.columns if c and str(c).lower() in ("hierarchy", "node", "node_path", "name", "title")]
+    candidate_cols = [
+        c
+        for c in df.columns
+        if c and str(c).lower() in ("hierarchy", "node", "node_path", "name", "title")
+    ]
     default_col = candidate_cols[0] if candidate_cols else df.columns[0]
-    selected_col = st.selectbox("Which column contains the taxonomy node labels?", df.columns, index=list(df.columns).index(default_col))
-    # show sample values
+    selected_col = st.selectbox(
+        "Which column contains the taxonomy node labels?",
+        df.columns,
+        index=list(df.columns).index(default_col),
+    )
     try:
         sample_vals = df[selected_col].dropna().astype(str).unique().tolist()
     except Exception:
         sample_vals = df[selected_col].dropna().astype(str).head(100).tolist()
     node_choice = st.selectbox("Choose taxonomy node", sample_vals)
 else:
-    st.info("Upload an Excel file to select taxonomy nodes. A default node will be used for testing.")
+    st.info("Auto-detected no taxonomy file — upload an Excel file to select taxonomy nodes.")
     node_choice = st.text_input("Default taxonomy node (used when no Excel uploaded):", value="DEFAULT_NODE")
 
 # === Query options / Prompt editor / Run ===
