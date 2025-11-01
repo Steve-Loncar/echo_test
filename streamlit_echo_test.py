@@ -721,6 +721,73 @@ Clarifications (MANDATORY):
 # This must remain *after* the with left_col: block ends
 
 with right_col:
+    # === Inject global professional styling ===
+    st.markdown("""
+        <style>
+        /* --- Global Layout Tweaks --- */
+        .block-container {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+        }
+
+        /* --- Headings --- */
+        h1, h2, h3, h4 {
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            color: #1E1E1E;
+        }
+
+        /* --- Tables --- */
+        table.dataframe {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        table.dataframe th {
+            background-color: #f6f8fa;
+            color: #333;
+            text-align: center;
+            padding: 6px;
+            font-weight: 600;
+            border-bottom: 1px solid #ddd;
+        }
+        table.dataframe td {
+            text-align: center;
+            padding: 6px;
+            border-bottom: 1px solid #eee;
+        }
+        tr:nth-child(even) {background-color: #fafafa;}
+
+        /* --- Info and commentary boxes --- */
+        .stAlert {
+            background-color: #f9f9fb !important;
+            border-left: 4px solid #2b6cb0 !important;
+        }
+
+        /* --- Section Dividers --- */
+        hr {
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        /* --- Metric widgets --- */
+        [data-testid="stMetricValue"] {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        /* --- Expander --- */
+        details summary {
+            font-weight: 600;
+            color: #333;
+        }
+
+        /* --- DataFrame header scroll bar fix --- */
+        div[data-testid="stHorizontalBlock"] {
+            overflow-x: auto;
+        }
+        </style>
+    """, unsafe_allow_html=True)
     st.divider()
     st.markdown("## Latest Webhook Response")
     st.caption("TIP: Responses from the Perplexity LLM (via n8n) will appear here once the workflow finishes.")
@@ -749,40 +816,122 @@ with right_col:
         data = None
 
     if data:
-        st.success("✅ Response received")
+        st.success("Response received")
 
-        # Top metadata
-        st.subheader("Metadata")
+        # === Professional Result Visualization ===
+        parsed = data.get("llm_output_parsed") or {}
+        results = parsed.get("results", {}) if isinstance(parsed, dict) else {}
+
+        # --- Top metadata bar ------------------------------------------------
+        st.markdown("### Analysis Summary")
         meta_cols = st.columns(4)
         meta_cols[0].metric("Model", data.get("model", "—"))
         meta_cols[1].metric("Tokens", data.get("total_tokens", "—"))
         meta_cols[2].metric("Cost (USD)", f"${data.get('cost_usd', 0):.4f}")
         meta_cols[3].metric("Timestamp", data.get("timestamp", "—"))
 
-        # Citations
+        st.divider()
+
+        # --- Financials Table (Years as Columns) -----------------------------
+        if "node_financials" in results and isinstance(results["node_financials"], dict):
+            st.subheader("Node Financials")
+            fin = results["node_financials"]
+            fin_rows = [
+                ("Revenue (USD bn)", fin.get("fy23_revenue_usd_bn"), fin.get("fy24_revenue_usd_bn"),
+                 fin.get("fy25_revenue_usd_bn"), fin.get("revenue_cagr_pct")),
+                ("EBITDA (USD bn)", fin.get("fy23_ebitda_usd_bn"), fin.get("fy24_ebitda_usd_bn"),
+                 fin.get("fy25_ebitda_usd_bn"), fin.get("ebitda_cagr_pct")),
+                ("EBITDA Margin (%)", fin.get("fy23_ebitda_margin_pct"), fin.get("fy24_ebitda_margin_pct"),
+                 fin.get("fy25_ebitda_margin_pct"), None),
+            ]
+            fin_df = pd.DataFrame(fin_rows,
+                                  columns=["Metric", "FY23", "FY24", "FY25", "CAGR %"]).set_index("Metric")
+            styled_fin = (
+                fin_df.style
+                .format("{:.2f}", na_rep="—")
+                .highlight_max(axis=1, color="#f0f4ff")
+                .set_table_styles([
+                    {"selector": "th", "props": [("background-color", "#eef3fa"), ("font-weight", "600")]},
+                    {"selector": "td", "props": [("border-bottom", "1px solid #eee")]},
+                ])
+            )
+            st.dataframe(styled_fin, use_container_width=True)
+
+            st.caption("CAGR values represent FY23–FY25 compound annual growth rate estimates.")
+
+        # --- Node Players ----------------------------------------------------
+        if "node_players" in results and isinstance(results["node_players"], list):
+            st.subheader("Top 5 Players")
+            df_players = pd.DataFrame(results["node_players"])
+            if not df_players.empty:
+                show_cols = ["rank", "name", "country", "type",
+                             "fy25_node_revenue_usd_bn", "fy25_node_ebitda_margin_pct", "confidence_score"]
+                st.dataframe(df_players[show_cols].rename(columns={
+                    "fy25_node_revenue_usd_bn": "FY25 Revenue (USD bn)",
+                    "fy25_node_ebitda_margin_pct": "FY25 EBITDA Margin (%)"
+                }))
+
+        # --- Pure Play Estimates --------------------------------------------
+        if "pure_play_estimates" in results and isinstance(results["pure_play_estimates"], list):
+            st.subheader("Pure-Play / Proxy Estimates")
+            df_pp = pd.DataFrame(results["pure_play_estimates"])
+            if not df_pp.empty:
+                show_cols = ["name", "country", "type", "proxy_reason",
+                             "fy25_revenue_usd_bn", "fy25_ebitda_margin_pct", "confidence_score"]
+                st.dataframe(df_pp[show_cols].rename(columns={
+                    "fy25_revenue_usd_bn": "FY25 Revenue (USD bn)",
+                    "fy25_ebitda_margin_pct": "FY25 EBITDA Margin (%)"
+                }))
+
+        # --- Commentary Sections --------------------------------------------
+        if results.get("financial_commentary") or results.get("player_commentary"):
+            st.subheader("Commentary")
+            if results.get("financial_commentary"):
+                st.markdown("**Financial Commentary**")
+                st.markdown(
+                    f"<div style='background-color:#f9f9fb; border-left:4px solid #2b6cb0; padding:0.6rem 1rem; margin-bottom:0.5rem; font-size:0.95rem;'>{results['financial_commentary']}</div>",
+                    unsafe_allow_html=True,
+                )
+            if results.get("player_commentary"):
+                st.markdown("**Player Commentary**")
+                st.markdown(
+                    f"<div style='background-color:#f9f9fb; border-left:4px solid #48bb78; padding:0.6rem 1rem; font-size:0.95rem;'>{results['player_commentary']}</div>",
+                    unsafe_allow_html=True,
+                )
+
+        if results.get("methodology_summary"):
+            st.subheader("Methodology Summary")
+            st.write(results["methodology_summary"])
+
+        # --- Sources & Citations --------------------------------------------
+        if results.get("sources"):
+            st.subheader("Sources")
+            df_sources = pd.DataFrame(results["sources"])
+            if not df_sources.empty:
+                df_sources = df_sources[["title", "publisher", "year", "url", "confidence_score"]]
+                st.dataframe(
+                    df_sources.style.format(na_rep="—").set_table_styles([
+                        {"selector": "th", "props": [("background-color", "#f6f8fa"), ("font-weight", "600")]},
+                    ]),
+                    use_container_width=True
+                )
+                st.caption("Source confidence scores reflect model-estimated credibility of each citation.")
+
         if data.get("citations"):
-            with st.expander("📚 Citations"):
+            with st.expander("Additional Citations"):
                 for c in data["citations"]:
                     st.markdown(f"- [{c}]({c})")
 
-        # Search results (if present)
-        if data.get("search_results"):
-            with st.expander("🔎 Search Results"):
-                for r in data["search_results"]:
-                    st.markdown(f"**{r.get('title','')}** — [{r.get('url','')}]({r.get('url','')})")
-                    st.caption(r.get("snippet", ""))
+        # --- Optional Raw & Debug Sections ----------------------------------
+        st.divider()
+        with st.expander("Raw Model Output / Diagnostics"):
+            view_mode = st.radio("View raw as:", ["Parsed JSON", "Raw Text"], horizontal=True, key="viewmode")
+            if view_mode == "Parsed JSON" and parsed:
+                st.json(parsed)
+            else:
+                st.code(data.get("llm_output_raw", ""), language="json")
 
-        # LLM Output
-        st.subheader("🧠 Model Output")
-        view_mode = st.radio("View as:", ["Parsed JSON", "Raw Text"], horizontal=True)
-
-        if view_mode == "Parsed JSON" and "llm_output_parsed" in data:
-            st.json(data["llm_output_parsed"])
-        else:
-            st.code(data.get("llm_output_raw", ""), language="json")
-
-        # Advanced diagnostics
-        with st.expander("Advanced Debug Info"):
+            st.caption("Diagnostic payload (internal debugging)")
             st.write(data)
 
     else:
