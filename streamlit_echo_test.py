@@ -233,21 +233,47 @@ Schema (MUST be followed exactly):
   "level": integer | null,
   "requested_fields": array[string],
   "results": {
-    "summary": string | null,
-    "market_metrics": {
-      "revenue_usd_bn_2023": number | null,
-      "revenue_usd_bn_2024": number | null,
-      "revenue_usd_bn_2025": number | null,
-      "revenue_cagr_percent_2023_2025": number | null,
-      "ebitda_usd_bn_2023": number | null,
-      "ebitda_usd_bn_2024": number | null,
-      "ebitda_usd_bn_2025": number | null,
-      "ebitda_cagr_percent_2023_2025": number | null,
-      "ebitda_margin_percent_2023": number | null,
-      "ebitda_margin_percent_2024": number | null,
-      "ebitda_margin_percent_2025": number | null
+    "node_financials": {
+      "fy23_revenue_usd_bn": number | null,
+      "fy24_revenue_usd_bn": number | null,
+      "fy25_revenue_usd_bn": number | null,
+      "revenue_cagr_pct": number | null,
+      "fy23_ebitda_usd_bn": number | null,
+      "fy24_ebitda_usd_bn": number | null,
+      "fy25_ebitda_usd_bn": number | null,
+      "ebitda_cagr_pct": number | null,
+      "fy23_ebitda_margin_pct": number | null,
+      "fy24_ebitda_margin_pct": number | null,
+      "fy25_ebitda_margin_pct": number | null
     },
+    "node_players": [
+      {
+        "rank": number,
+        "name": string,
+        "country": string | null,
+        "type": string | null,
+        "fy25_node_revenue_usd_bn": number | null,
+        "fy25_node_ebitda_usd_bn": number | null,
+        "fy25_node_ebitda_margin_pct": number | null,
+        "confidence_score": number,
+        "attribution_basis": string
+      }
+    ],
+    "pure_play_estimates": [
+      {
+        "name": string,
+        "country": string | null,
+        "type": string | null,
+        "proxy_reason": string,
+        "fy25_revenue_usd_bn": number | null,
+        "fy25_ebitda_usd_bn": number | null,
+        "fy25_ebitda_margin_pct": number | null,
+        "confidence_score": number
+      }
+    ],
     "methodology_summary": string | null,
+    "financial_commentary": string | null,
+    "player_commentary": string | null,
     "taxonomy_reference": string | null,
     "sources": [
       {
