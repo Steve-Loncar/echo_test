@@ -6,6 +6,7 @@ import os
 import threading
 import time
 from collections import deque
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pandas as pd
@@ -489,6 +490,26 @@ max_tokens = st.number_input(
     help="Higher allows longer structured analyses and full financial tables. Costs scale with token count."
 )
 
+# === Timeout Configuration ===
+recommended_timeout = {
+    "sonar": 120000,
+    "sonar-pro": 180000,
+    "sonar-deep-research": 240000,
+}
+
+default_timeout = recommended_timeout.get(model_name, 120000)
+
+timeout_ms = st.number_input(
+    "Timeout (ms)",
+    min_value=30000,
+    max_value=300000,
+    value=int(default_timeout),
+    step=10000,
+    help=f"Recommended: {default_timeout} ms for {model_name}. Longer models take more time — and cost more tokens.",
+)
+
+st.caption("💡 Increase this if your deeper research calls time out. Costs scale roughly with total tokens used.")
+
 include_retrieval = st.checkbox("Include retrieval (top-k docs) before sending to LLM", value=False,
                                 help="If enabled, n8n should run a retriever and include retrieved_docs in the prompt.")
 priority = st.selectbox("Priority", ["normal", "high", "low"], index=0,
@@ -621,6 +642,9 @@ with col2:
                 "include_retrieval": bool(include_retrieval),
                 "priority": priority,
                 "dry_run": bool(dry_run),
+                "timeout_ms": timeout_ms,
+                "timestamp": datetime.utcnow().isoformat(),
+                "env_mode": st.session_state.get("env_mode", "test"),
                 "client_timestamp": time.time()
             }
 
