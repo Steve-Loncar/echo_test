@@ -501,74 +501,74 @@ elif _model_choice.startswith("sonar-deep-research"):
 else:
     model_name = "sonar"
 
-# Default analytical tuning for refined research
-    DEFAULT_MODEL_NAME = model_name
-    DEFAULT_TEMPERATURE = 0.35
-    DEFAULT_MAX_TOKENS = 5000
+# Default analytical tuning for refined research  ⟵ UNINDENT from the `else:` above
+DEFAULT_MODEL_NAME = model_name
+DEFAULT_TEMPERATURE = 0.35
+DEFAULT_MAX_TOKENS = 5000
 
-    temperature = st.slider(
-        "Temperature (analytical creativity)",
-        min_value=0.0, max_value=1.0, value=DEFAULT_TEMPERATURE, step=0.05,
-        help="Higher = more flexible reasoning and interpolation. 0.35 is ideal for analytical estimation."
+temperature = st.slider(
+    "Temperature (analytical creativity)",
+    min_value=0.0, max_value=1.0, value=DEFAULT_TEMPERATURE, step=0.05,
+    help="Higher = more flexible reasoning and interpolation. 0.35 is ideal for analytical estimation."
+)
+
+env_mode = st.session_state.get("env_mode", "test")
+if env_mode == "live" and temperature > 0.5:
+    st.warning(
+        "⚠️ You are in LIVE mode with a high temperature — "
+        "results may vary and cost more. "
+        "Use lower temperatures for reproducibility and lower cost."
     )
 
-    env_mode = st.session_state.get("env_mode", "test")
-    if env_mode == "live" and temperature > 0.5:
-        st.warning(
-            "⚠️ You are in LIVE mode with a high temperature — "
-            "results may vary and cost more. "
-            "Use lower temperatures for reproducibility and lower cost."
-        )
+max_tokens = st.number_input(
+    "Max tokens (response length)",
+    min_value=256, max_value=8000, value=DEFAULT_MAX_TOKENS,
+    help="Higher allows longer structured analyses and full financial tables. Costs scale with token count."
+)
 
-    max_tokens = st.number_input(
-        "Max tokens (response length)",
-        min_value=256, max_value=8000, value=DEFAULT_MAX_TOKENS,
-        help="Higher allows longer structured analyses and full financial tables. Costs scale with token count."
-    )
+# === Timeout Configuration ===
+recommended_timeout = {
+    "sonar": 120000,
+    "sonar-pro": 180000,
+    "sonar-deep-research": 240000,
+}
 
-    # === Timeout Configuration ===
-    recommended_timeout = {
-        "sonar": 120000,
-        "sonar-pro": 180000,
-        "sonar-deep-research": 240000,
-    }
+default_timeout = recommended_timeout.get(model_name, 120000)
 
-    default_timeout = recommended_timeout.get(model_name, 120000)
+timeout_ms = st.number_input(
+    "Timeout (ms)",
+    min_value=30000,
+    max_value=300000,
+    value=int(default_timeout),
+    step=10000,
+    help=f"Recommended: {default_timeout} ms for {model_name}. Longer models take more time — and cost more tokens.",
+)
 
-    timeout_ms = st.number_input(
-        "Timeout (ms)",
-        min_value=30000,
-        max_value=300000,
-        value=int(default_timeout),
-        step=10000,
-        help=f"Recommended: {default_timeout} ms for {model_name}. Longer models take more time — and cost more tokens.",
-    )
+st.caption("💡 Increase this if your deeper research calls time out. Costs scale roughly with total tokens used.")
 
-    st.caption("💡 Increase this if your deeper research calls time out. Costs scale roughly with total tokens used.")
+include_retrieval = st.checkbox("Include retrieval (top-k docs) before sending to LLM", value=False,
+                                help="If enabled, n8n should run a retriever and include retrieved_docs in the prompt.")
+priority = st.selectbox("Priority", ["normal", "high", "low"], index=0,
+                        help="Tag the job priority; can be used by downstream schedulers or model routing.")
+dry_run = st.checkbox("Dry run (don't persist downstream)", value=False,
+                      help="If set, results won't be written to datasets downstream.")
 
-    include_retrieval = st.checkbox("Include retrieval (top-k docs) before sending to LLM", value=False,
-                                    help="If enabled, n8n should run a retriever and include retrieved_docs in the prompt.")
-    priority = st.selectbox("Priority", ["normal", "high", "low"], index=0,
-                            help="Tag the job priority; can be used by downstream schedulers or model routing.")
-    dry_run = st.checkbox("Dry run (don't persist downstream)", value=False,
-                          help="If set, results won't be written to datasets downstream.")
+# ▶️ Run / Preview controls (side-by-side)
+run_col1, run_col2 = st.columns([1, 1])
+with run_col1:
+    if st.button("Preview merged prompt"):
+        display_preview = prompt_text
+        display_preview = display_preview.replace("{{global_context}}", str(global_context))
+        display_preview = display_preview.replace("{{display_name}}", str(node_choice))
+        display_preview = display_preview.replace("{{path}}", str(node_choice))
+        display_preview = display_preview.replace("{{required_fields}}", str(DEFAULT_REQUIRED_FIELDS))
+        display_preview = display_preview.replace("{{extra_context}}", str(extra_context))
+        display_preview = display_preview.replace("{{query_depth}}", str(DEFAULT_QUERY_DEPTH))
+        st.subheader("Merged prompt preview")
+        st.code(display_preview)
 
-    # ▶️ Run / Preview controls (side-by-side)
-    run_col1, run_col2 = st.columns([1, 1])
-    with run_col1:
-        if st.button("Preview merged prompt"):
-            display_preview = prompt_text
-            display_preview = display_preview.replace("{{global_context}}", str(global_context))
-            display_preview = display_preview.replace("{{display_name}}", str(node_choice))
-            display_preview = display_preview.replace("{{path}}", str(node_choice))
-            display_preview = display_preview.replace("{{required_fields}}", str(DEFAULT_REQUIRED_FIELDS))
-            display_preview = display_preview.replace("{{extra_context}}", str(extra_context))
-            display_preview = display_preview.replace("{{query_depth}}", str(DEFAULT_QUERY_DEPTH))
-            st.subheader("Merged prompt preview")
-            st.code(display_preview)
-
-    with run_col2:
-        if st.button("Run query"):
+with run_col2:
+    if st.button("Run query"):
             if not node_choice:
                 st.error("No taxonomy node selected. Upload an Excel and select a node first.")
             else:
@@ -716,7 +716,7 @@ else:
                     st.error(f"Request failed: {e}")
 
 
-# 🧩 Right column — dedicated to response output
+# 🧩 Right column — dedicated to response output (50/50 with left)
 with right_col:
     st.divider()
     st.markdown("## 🔍 Latest Webhook Response")
