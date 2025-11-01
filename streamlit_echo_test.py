@@ -13,6 +13,8 @@ import pandas as pd
 import requests
 import streamlit as st
 
+st.set_page_config(page_title="n8n Echo Query Tester", layout="wide")
+
 # === Configuration - replace with your webhook(s) ===
 TEST_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook-test/echo_agent"
 LIVE_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook/echo_agent"
@@ -158,11 +160,13 @@ def compute_nodes_to_query(df_tax: pd.DataFrame, selected_path_or_name: str, rel
 
     return results
 
-# --- Layout: put query on the left, responses on the right -------------------
+# --- Layout: equal 50/50 columns for query and response ---------------------
 left_col, right_col = st.columns([1, 1], gap="large")
+
 with left_col:
     st.title("n8n Echo / Query Test")
-    st.markdown("Upload your taxonomy Excel, pick a node, set query options, and POST to n8n.")
+    st.markdown("Upload your taxonomy Excel, choose nodes, edit prompt and LLM settings, then POST to n8n.")
+    st.divider()
 
     # 1) Upload taxonomy Excel and choose column to use as node labels
     node_choice = None
@@ -713,6 +717,12 @@ with col2:
     with right_col:
         st.divider()
         st.markdown("## 🔍 Latest Webhook Response")
+        st.caption("💡 Responses from the Perplexity LLM (via n8n) will appear here once the workflow finishes.")
+        st.divider()
+
+        # This section will later hold formatted tables, metrics, and analysis
+        st.markdown("### 📊 Structured Results Placeholder")
+        st.caption("Once response parsing is added, financial tables and player data will render here.")
 
         # When the webhook responds, show structured info
         if "last_response" not in st.session_state:
@@ -783,7 +793,6 @@ with col2:
 # from st.session_state['last_response'] which n8n can POST into via REST.
 
 
-
-
-
-
+# --- Footer ---------------------------------------------------------------
+st.markdown("---")
+st.caption("Built with ❤️ using Streamlit · Connected to n8n · Perplexity Sonar models")
