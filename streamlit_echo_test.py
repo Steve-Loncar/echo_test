@@ -966,77 +966,33 @@ else:
 # 🌐 Live Webhook Receiver
 # ============================================================
 
-
-
-# --- Config ---
-WEBHOOK_PORT = 8502   # you can change this if your main Streamlit is on 8501
-WEBHOOK_PATH = "/n8n-webhook"
-
-# Thread safety lock for concurrent access to shared_data
-lock = threading.Lock()
-
-# Thread-safe storage
-shared_data = {"latest": None}
-
-class WebhookHandler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        if self.path != WEBHOOK_PATH:
-            self.send_response(404)
-            self.end_headers()
-            return
-
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length)
-
-        try:
-            parsed = json.loads(body)
-            # Thread-safe update
-            with lock:
-                shared_data["latest"] = parsed
-
-            # Acknowledge
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(b'{"status":"ok"}')
-
-        except Exception as e:
-            self.send_response(500)
-            self.end_headers()
-            self.wfile.write(str(e).encode())
-
-
-# Start server thread (if not already running)
-def start_webhook_server():
-    server = HTTPServer(("0.0.0.0", WEBHOOK_PORT), WebhookHandler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return f"http://localhost:{WEBHOOK_PORT}{WEBHOOK_PATH}"
-
-receiver_url = start_webhook_server()
-
 st.divider()
-st.markdown("## 🌐 Live Webhook Receiver")
-st.info(f"Listening for POSTs at: `{receiver_url}`")
+st.markdown("## 🌐 Live Webhook Receiver (Simulated)")
+st.info("ℹ️ Streamlit Cloud cannot host incoming webhooks directly.")
+st.markdown("""
+Use your **n8n Cloud endpoint** for inbound POSTs, then have n8n send results to Streamlit via an API call or shared dataset.
 
-# Auto-refresh functionality (optional - requires streamlit-autorefresh package)
+You can still view the latest response below if you store it or fetch via webhook.
+""")
+
+# Placeholder auto-refresh (simulated)
 try:
     from streamlit_autorefresh import st_autorefresh
     st_autorefresh(interval=5000, key="webhook-auto-refresh", limit=None)
-    st.caption("🔄 Auto-refreshing every 5 seconds to show new webhook data")
+    st.caption("🔄 Auto-refreshing every 5 seconds to show latest stored data")
 except ImportError:
     st.caption("💡 Install streamlit-autorefresh for automatic UI updates: `pip install streamlit-autorefresh`")
 
-# Thread-safe read of shared data
-with lock:
-    latest_data = shared_data["latest"].copy() if shared_data["latest"] else None
+# Use session_state (populated by n8n GET call)
+latest_data = st.session_state.get("latest_response") or st.session_state.get("last_response")
 
 if latest_data:
-    st.success("✅ Live webhook data received!")
+    st.success("✅ Latest webhook data (from n8n fetch)")
     st.json(latest_data)
 else:
-    st.warning("No webhook data yet — waiting for n8n to POST results here.")
+    st.warning("No live webhook data yet — fetch manually using the Fetch Latest Response button above.")
 
-st.caption("Use this endpoint as the `POST` target in your n8n Respond to Webhook node.")
+st.caption("Use your **n8n Cloud webhook URL** for POSTs. Streamlit Cloud does not accept inbound HTTP connections.")
 
 
 # ============================================================
