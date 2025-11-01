@@ -291,6 +291,80 @@ Context and placeholders you MUST use:
 - Query depth: {{query_depth}}
 - Retrieved documents (if provided): use only the objects in retrieved_docs; each has id, title, url, snippet, text.
 
+For every node analysis, complete the following structured subtasks inside the "results" object.
+All quantitative values must include units (USD billions, %, etc.). 
+If data are estimates or derived from proxies, clearly state the basis and confidence in "notes".
+
+### 1. Node Financial Data
+Purpose: quantify the commercial scale of the node for cross-node comparison.
+
+Return object `node_financials` with:
+{
+  "fy23_revenue_usd_bn": number | null,
+  "fy24_revenue_usd_bn": number | null,
+  "fy25_revenue_usd_bn": number | null,
+  "revenue_cagr_pct": number | null,
+  "fy23_ebitda_usd_bn": number | null,
+  "fy24_ebitda_usd_bn": number | null,
+  "fy25_ebitda_usd_bn": number | null,
+  "ebitda_cagr_pct": number | null,
+  "fy23_ebitda_margin_pct": number | null,
+  "fy24_ebitda_margin_pct": number | null,
+  "fy25_ebitda_margin_pct": number | null
+}
+If direct figures are unavailable, infer from segment disclosures, peer averages, or public industry ratios and record the estimation method and assumptions in `notes`.
+
+### 2. Node Player Data
+Purpose: identify and profile the main companies that materially participate in this node.
+
+Return top 5 players ranked by FY25 **node-attributable revenue** in object `node_players`, each entry:
+{
+  "rank": number,
+  "name": string,
+  "country": string | null,
+  "type": string | null,   // prime, tier 1/2/3, specialist, startup, etc.
+  "fy25_node_revenue_usd_bn": number | null,
+  "fy25_node_ebitda_usd_bn": number | null,
+  "fy25_node_ebitda_margin_pct": number | null,
+  "confidence_score": number,
+  "attribution_basis": string   // e.g. "direct disclosure", "segment revenue", "modelled estimate", "derived from comparable peers"
+}
+Clarify that all financial metrics represent **only the portion attributable to this node**, not total company results.  
+If segment data are disclosed, use those directly.  
+If not disclosed, infer using proportionate segment weightings, business mix, or peer benchmarking — and explain how attribution was determined in `attribution_basis` and `notes`.  
+Avoid aggregating full company revenues unless the firm is a pure play in this node.
+
+### 3. Node Pure-Play / Proxy Estimates
+Purpose: provide cleaner benchmarks when most participants are diversified.
+
+Return up to 3 representative pure-plays or near-adjacent proxies in `pure_play_estimates`, each entry:
+{
+  "name": string,
+  "country": string | null,
+  "type": string | null,
+  "proxy_reason": string,   // e.g. "sole focus on avionics sensors" or "closest adjacent propulsion OEM"
+  "fy25_revenue_usd_bn": number | null,
+  "fy25_ebitda_usd_bn": number | null,
+  "fy25_ebitda_margin_pct": number | null,
+  "confidence_score": number
+}
+Explain **why** each proxy is relevant — specialization, technology overlap, customer base, or cost structure similarity — and explicitly note when using proxies instead of true participants.
+
+### 4. Methodology Summary
+Purpose: ensure transparency and reproducibility of sizing approach.
+
+In `results.methodology_summary`, concisely explain:
+- Main data sources (reports, databases, company filings, or inference).  
+- How node-level financials were attributed from segment or total-company data.  
+- Treatment of diversified companies.  
+- Any currency or inflation adjustments or conversion assumptions.
+Limit to ≤150 words.
+
+### 5. Evidence Handling
+Every numeric or factual statement must be supported by an `evidence` object with a confidence score (0–1). 
+Evidence should reference credible financial or industry sources (company reports, market studies, analyst estimates, etc.), not blogs or forums.
+
+
 Rules (MANDATORY):
 1) Output EXACTLY ONE JSON OBJECT conforming to the schema above, nothing else.
 2) For every item in requested_fields include a corresponding key in results. If unknown, set scalar -> null, arrays -> [].
