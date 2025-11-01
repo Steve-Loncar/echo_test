@@ -1,8 +1,12 @@
 # streamlit_echo_test.py
+import difflib
 import glob
+import json
 import os
+import threading
 import time
 from collections import deque
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pandas as pd
 import requests
@@ -471,8 +475,13 @@ temperature = st.slider(
     help="Higher = more flexible reasoning and interpolation. 0.35 is ideal for analytical estimation."
 )
 
-if st.session_state["env_mode"] == "live" and temperature > 0.5:
-    st.warning("⚠️ You are in LIVE mode with a high temperature — results may vary and cost more.")
+env_mode = st.session_state.get("env_mode", "test")
+if env_mode == "live" and temperature > 0.5:
+    st.warning(
+        "⚠️ You are in LIVE mode with a high temperature — "
+        "results may vary and cost more. "
+        "Use lower temperatures for reproducibility and lower cost."
+    )
 
 max_tokens = st.number_input(
     "Max tokens (response length)",
@@ -732,7 +741,6 @@ _response_input = st.text_area(
 )
 
 if _response_input.strip():
-    import json
     try:
         data = json.loads(_response_input)
         if isinstance(data, dict):
@@ -795,8 +803,6 @@ if _response_input.strip():
 # ============================================================
 # 9) Live Webhook Fetcher (Auto-Retrieval from n8n)
 # ============================================================
-
-import requests
 
 st.divider()
 st.markdown("## 🌐 Live Webhook Fetcher")
@@ -936,12 +942,14 @@ else:
 # 🌐 Live Webhook Receiver
 # ============================================================
 
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+
 
 # --- Config ---
 WEBHOOK_PORT = 8502   # you can change this if your main Streamlit is on 8501
 WEBHOOK_PATH = "/n8n-webhook"
+
+# Thread safety lock for concurrent access to shared_data
+lock = threading.Lock()
 
 # Thread-safe storage
 shared_data = {"latest": None}
@@ -957,9 +965,10 @@ class WebhookHandler(BaseHTTPRequestHandler):
         body = self.rfile.read(content_length)
 
         try:
-            import json
             parsed = json.loads(body)
-            shared_data["latest"] = parsed
+            # Thread-safe update
+            with lock:
+                shared_data["latest"] = parsed
 
             # Acknowledge
             self.send_response(200)
@@ -979,15 +988,27 @@ def start_webhook_server():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return f"http://localhost:{WEBHOOK_PORT}{WEBHOOK_PATH}"
 
-webhook_url = start_webhook_server()
+receiver_url = start_webhook_server()
 
 st.divider()
 st.markdown("## 🌐 Live Webhook Receiver")
-st.info(f"Listening for POSTs at: `{webhook_url}`")
+st.info(f"Listening for POSTs at: `{receiver_url}`")
 
-if shared_data["latest"]:
+# Auto-refresh functionality (optional - requires streamlit-autorefresh package)
+try:
+    from streamlit_autorefresh import st_autorefresh
+    st_autorefresh(interval=5000, key="webhook-auto-refresh", limit=None)
+    st.caption("🔄 Auto-refreshing every 5 seconds to show new webhook data")
+except ImportError:
+    st.caption("💡 Install streamlit-autorefresh for automatic UI updates: `pip install streamlit-autorefresh`")
+
+# Thread-safe read of shared data
+with lock:
+    latest_data = shared_data["latest"].copy() if shared_data["latest"] else None
+
+if latest_data:
     st.success("✅ Live webhook data received!")
-    st.json(shared_data["latest"])
+    st.json(latest_data)
 else:
     st.warning("No webhook data yet — waiting for n8n to POST results here.")
 
@@ -997,8 +1018,6 @@ st.caption("Use this endpoint as the `POST` target in your n8n Respond to Webhoo
 # ============================================================
 # 10) Compare Previous vs Latest Response
 # ============================================================
-
-import difflib
 
 if "last_webhook_response" not in st.session_state:
     st.session_state["last_webhook_response"] = None
@@ -1013,7 +1032,7 @@ Useful when testing prompt refinements, model changes, or retrieval adjustments 
 
 if "latest_response" in st.session_state:
     prev = st.session_state.get("last_webhook_response")
-    latest = st.session_state["latest_response"]
+    latest = st.session_state.get("latest_response")
 
     if prev is not None:
         prev_str = json.dumps(prev, indent=2, sort_keys=True)
@@ -1039,8 +1058,9 @@ if "latest_response" in st.session_state:
     else:
         st.info("No previous response cached yet — fetch twice to start comparison.")
 
-    # Always store the latest as "last" for next cycle
-    st.session_state["last_webhook_response"] = st.session_state["latest_response"]
+    # Always store the latest as "last" for next cycle (only if latest exists)
+    if latest is not None:
+        st.session_state["last_webhook_response"] = latest
 
 else:
     st.info("Fetch at least one webhook response to enable comparison.")
