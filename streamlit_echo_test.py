@@ -475,101 +475,101 @@ Clarifications (MANDATORY):
 
     # 4. LLM model & simple technical settings (kept inside left column)
     st.markdown("### LLM Model & Settings - *Control accuracy, depth, and cost*")
-st.markdown("""
-Choose a **Perplexity Sonar** model variant and adjust parameters to balance speed, analytical depth, and cost.
+    st.markdown("""
+    Choose a **Perplexity Sonar** model variant and adjust parameters to balance speed, analytical depth, and cost.
 
-**Model Options**
-- **sonar (default)** - Fast, concise, best for summaries or debugging.
-- **sonar-pro** - Slower but performs multi-document reasoning for better numeric coherence.
-- **sonar-deep-research** - Most thorough, cross-validates sources and produces full analytical writeups.
+    **Model Options**
+    - **sonar (default)** - Fast, concise, best for summaries or debugging.
+    - **sonar-pro** - Slower but performs multi-document reasoning for better numeric coherence.
+    - **sonar-deep-research** - Most thorough, cross-validates sources and produces full analytical writeups.
 
-> *Note:* higher models and larger token counts may cost more per request.  
-See [Perplexity API pricing](https://docs.perplexity.ai/docs/pricing) for current rates.
-""")
+    > *Note:* higher models and larger token counts may cost more per request.  
+    See [Perplexity API pricing](https://docs.perplexity.ai/docs/pricing) for current rates.
+    """)
 
-_model_choice = st.selectbox(
-    "Select model variant:",
-    ["sonar (default)", "sonar-pro", "sonar-deep-research"],
-    index=2,
-    help="Select a model tuned for your analysis depth. Deep-research is most capable but slower and costlier."
-)
-
-# Map to model identifiers
-if _model_choice.startswith("sonar-pro"):
-    model_name = "sonar-pro"
-elif _model_choice.startswith("sonar-deep-research"):
-    model_name = "sonar-deep-research"
-else:
-    model_name = "sonar"
-
-# Default analytical tuning for refined research  ⟵ UNINDENT from the `else:` above
-DEFAULT_MODEL_NAME = model_name
-DEFAULT_TEMPERATURE = 0.35
-DEFAULT_MAX_TOKENS = 5000
-
-temperature = st.slider(
-    "Temperature (analytical creativity)",
-    min_value=0.0, max_value=1.0, value=DEFAULT_TEMPERATURE, step=0.05,
-    help="Higher = more flexible reasoning and interpolation. 0.35 is ideal for analytical estimation."
-)
-
-env_mode = st.session_state.get("env_mode", "test")
-if env_mode == "live" and temperature > 0.5:
-    st.warning(
-        "WARNING: You are in LIVE mode with a high temperature - "
-        "results may vary and cost more. "
-        "Use lower temperatures for reproducibility and lower cost."
+    _model_choice = st.selectbox(
+        "Select model variant:",
+        ["sonar (default)", "sonar-pro", "sonar-deep-research"],
+        index=2,
+        help="Select a model tuned for your analysis depth. Deep-research is most capable but slower and costlier."
     )
 
-max_tokens = st.number_input(
-    "Max tokens (response length)",
-    min_value=256, max_value=8000, value=DEFAULT_MAX_TOKENS,
-    help="Higher allows longer structured analyses and full financial tables. Costs scale with token count."
-)
+    # Map to model identifiers
+    if _model_choice.startswith("sonar-pro"):
+        model_name = "sonar-pro"
+    elif _model_choice.startswith("sonar-deep-research"):
+        model_name = "sonar-deep-research"
+    else:
+        model_name = "sonar"
 
-# === Timeout Configuration ===
-recommended_timeout = {
-    "sonar": 120000,
-    "sonar-pro": 180000,
-    "sonar-deep-research": 240000,
-}
+    # Default analytical tuning for refined research
+    DEFAULT_MODEL_NAME = model_name
+    DEFAULT_TEMPERATURE = 0.35
+    DEFAULT_MAX_TOKENS = 5000
 
-default_timeout = recommended_timeout.get(model_name, 120000)
+    temperature = st.slider(
+        "Temperature (analytical creativity)",
+        min_value=0.0, max_value=1.0, value=DEFAULT_TEMPERATURE, step=0.05,
+        help="Higher = more flexible reasoning and interpolation. 0.35 is ideal for analytical estimation."
+    )
 
-timeout_ms = st.number_input(
-    "Timeout (ms)",
-    min_value=30000,
-    max_value=300000,
-    value=int(default_timeout),
-    step=10000,
-    help=f"Recommended: {default_timeout} ms for {model_name}. Longer models take more time — and cost more tokens.",
-)
+    env_mode = st.session_state.get("env_mode", "test")
+    if env_mode == "live" and temperature > 0.5:
+        st.warning(
+            "WARNING: You are in LIVE mode with a high temperature - "
+            "results may vary and cost more. "
+            "Use lower temperatures for reproducibility and lower cost."
+        )
 
-st.caption("TIP: Increase this if your deeper research calls time out. Costs scale roughly with total tokens used.")
+    max_tokens = st.number_input(
+        "Max tokens (response length)",
+        min_value=256, max_value=8000, value=DEFAULT_MAX_TOKENS,
+        help="Higher allows longer structured analyses and full financial tables. Costs scale with token count."
+    )
 
-include_retrieval = st.checkbox("Include retrieval (top-k docs) before sending to LLM", value=False,
-                                help="If enabled, n8n should run a retriever and include retrieved_docs in the prompt.")
-priority = st.selectbox("Priority", ["normal", "high", "low"], index=0,
-                        help="Tag the job priority; can be used by downstream schedulers or model routing.")
-dry_run = st.checkbox("Dry run (don't persist downstream)", value=False,
-                      help="If set, results won't be written to datasets downstream.")
+    # === Timeout Configuration ===
+    recommended_timeout = {
+        "sonar": 120000,
+        "sonar-pro": 180000,
+        "sonar-deep-research": 240000,
+    }
 
-# Run / Preview controls (side-by-side)
-run_col1, run_col2 = st.columns([1, 1])
-with run_col1:
-    if st.button("Preview merged prompt"):
-        display_preview = prompt_text
-        display_preview = display_preview.replace("{{global_context}}", str(global_context))
-        display_preview = display_preview.replace("{{display_name}}", str(node_choice))
-        display_preview = display_preview.replace("{{path}}", str(node_choice))
-        display_preview = display_preview.replace("{{required_fields}}", str(DEFAULT_REQUIRED_FIELDS))
-        display_preview = display_preview.replace("{{extra_context}}", str(extra_context))
-        display_preview = display_preview.replace("{{query_depth}}", str(DEFAULT_QUERY_DEPTH))
-        st.subheader("Merged prompt preview")
-        st.code(display_preview)
+    default_timeout = recommended_timeout.get(model_name, 120000)
 
-with run_col2:
-    if st.button("Run query"):
+    timeout_ms = st.number_input(
+        "Timeout (ms)",
+        min_value=30000,
+        max_value=300000,
+        value=int(default_timeout),
+        step=10000,
+        help=f"Recommended: {default_timeout} ms for {model_name}. Longer models take more time — and cost more tokens.",
+    )
+
+    st.caption("TIP: Increase this if your deeper research calls time out. Costs scale roughly with total tokens used.")
+
+    include_retrieval = st.checkbox("Include retrieval (top-k docs) before sending to LLM", value=False,
+                                    help="If enabled, n8n should run a retriever and include retrieved_docs in the prompt.")
+    priority = st.selectbox("Priority", ["normal", "high", "low"], index=0,
+                            help="Tag the job priority; can be used by downstream schedulers or model routing.")
+    dry_run = st.checkbox("Dry run (don't persist downstream)", value=False,
+                          help="If set, results won't be written to datasets downstream.")
+
+    # Run / Preview controls (side-by-side)
+    run_col1, run_col2 = st.columns([1, 1])
+    with run_col1:
+        if st.button("Preview merged prompt"):
+            display_preview = prompt_text
+            display_preview = display_preview.replace("{{global_context}}", str(global_context))
+            display_preview = display_preview.replace("{{display_name}}", str(node_choice))
+            display_preview = display_preview.replace("{{path}}", str(node_choice))
+            display_preview = display_preview.replace("{{required_fields}}", str(DEFAULT_REQUIRED_FIELDS))
+            display_preview = display_preview.replace("{{extra_context}}", str(extra_context))
+            display_preview = display_preview.replace("{{query_depth}}", str(DEFAULT_QUERY_DEPTH))
+            st.subheader("Merged prompt preview")
+            st.code(display_preview)
+
+    with run_col2:
+        if st.button("Run query"):
             if not node_choice:
                 st.error("No taxonomy node selected. Upload an Excel and select a node first.")
             else:
@@ -716,6 +716,7 @@ with run_col2:
                 except Exception as e:
                     st.error(f"Request failed: {e}")
 
+# (left_col block ends here)
 # Right column - dedicated to response output (50/50 with left)
 # This must remain *after* the with left_col: block ends
 
