@@ -158,87 +158,89 @@ def compute_nodes_to_query(df_tax: pd.DataFrame, selected_path_or_name: str, rel
 
     return results
 
-st.title("n8n Echo / Query Test")
+# --- Layout: put query on the left, responses on the right -------------------
+left_col, right_col = st.columns([1, 1], gap="large")
+with left_col:
+    st.title("n8n Echo / Query Test")
+    st.markdown("Upload your taxonomy Excel, pick a node, set query options, and POST to n8n.")
 
-st.markdown("Upload your taxonomy Excel, pick a node, set query options, and POST to n8n.")
+    # 1) Upload taxonomy Excel and choose column to use as node labels
+    node_choice = None
+    df = None
 
-# 1) Upload taxonomy Excel and choose column to use as node labels
-node_choice = None
-df = None
-
-# Auto-detect taxonomy file in repo (GitHub). Patterns are checked in order.
-LOCAL_TAXONOMY_FILE = None
-patterns = [
-    "./Aero and Defence Taxonomy Structure for n8n.xlsx",
-    "./Aero and Defence Taxonomy Structure for n8n DATA for charts.xlsx",
-    "./taxonomy*.xlsx",
-    "./data/*.xlsx",
-    "./*.xlsx",
-]
-for p in patterns:
-    matches = glob.glob(p)
-    if matches:
-        LOCAL_TAXONOMY_FILE = matches[0]
-        break
-
-if LOCAL_TAXONOMY_FILE:
-    try:
-        df = pd.read_excel(LOCAL_TAXONOMY_FILE, sheet_name=0)
-        st.info(f"Auto-loaded taxonomy from repo file: {os.path.basename(LOCAL_TAXONOMY_FILE)}")
-    except Exception as e:
-        st.warning(f"Auto-load failed ({LOCAL_TAXONOMY_FILE}): {e}")
-        df = None
-
-uploaded = st.file_uploader("Upload taxonomy Excel (.xlsx) — or leave blank to use auto-detected file", type=["xlsx"])
-
-# Only read the uploaded file if auto-load did not already populate df
-if uploaded and df is None:
-    try:
-        df = pd.read_excel(uploaded, sheet_name=0)
-    except Exception as e:
-        st.error(f"Failed to read Excel: {e}")
-        df = None
-
-if df is not None:
-    st.write("Detected columns:", list(df.columns))
-    candidate_cols = [
-        c
-        for c in df.columns
-        if c and str(c).lower() in ("hierarchy", "node", "node_path", "name", "title")
+    # Auto-detect taxonomy file in repo (GitHub). Patterns are checked in order.
+    LOCAL_TAXONOMY_FILE = None
+    patterns = [
+        "./Aero and Defence Taxonomy Structure for n8n.xlsx",
+        "./Aero and Defence Taxonomy Structure for n8n DATA for charts.xlsx",
+        "./taxonomy*.xlsx",
+        "./data/*.xlsx",
+        "./*.xlsx",
     ]
-    default_col = candidate_cols[0] if candidate_cols else df.columns[0]
-    selected_col = st.selectbox(
-        "Which column contains the taxonomy node labels?",
-        df.columns,
-        index=list(df.columns).index(default_col),
-    )
-    try:
-        sample_vals = df[selected_col].dropna().astype(str).unique().tolist()
-    except Exception:
-        sample_vals = df[selected_col].dropna().astype(str).head(100).tolist()
-    node_choice = st.selectbox("Choose taxonomy node", sample_vals)
-else:
-    st.info("Auto-detected no taxonomy file — upload an Excel file to select taxonomy nodes.")
-    node_choice = st.text_input("Default taxonomy node (used when no Excel uploaded):", value="DEFAULT_NODE")
+    for p in patterns:
+        matches = glob.glob(p)
+        if matches:
+            LOCAL_TAXONOMY_FILE = matches[0]
+            break
 
-# === Query options / Prompt editor / Run ===
-st.subheader("Query options")
+    if LOCAL_TAXONOMY_FILE:
+        try:
+            df = pd.read_excel(LOCAL_TAXONOMY_FILE, sheet_name=0)
+            st.info(f"Auto-loaded taxonomy from repo file: {os.path.basename(LOCAL_TAXONOMY_FILE)}")
+        except Exception as e:
+            st.warning(f"Auto-load failed ({LOCAL_TAXONOMY_FILE}): {e}")
+            df = None
 
-# Hidden defaults used by the workflow
-DEFAULT_REQUIRED_FIELDS = [
-    "summary",
-    "node_financials",
-    "node_players",
-    "pure_play_estimates",
-    "methodology_summary",
-    "financial_commentary",
-    "player_commentary",
-    "sources"
-]
-DEFAULT_QUERY_DEPTH = 3
+    uploaded = st.file_uploader("Upload taxonomy Excel (.xlsx) — or leave blank to use auto-detected file", type=["xlsx"])
 
-# 1) Global context (editable, pre-filled)
-default_global_context = """We are conducting a systematic, node-by-node analysis of the global Aerospace & Defence industry.
+    # Only read the uploaded file if auto-load did not already populate df
+    if uploaded and df is None:
+        try:
+            df = pd.read_excel(uploaded, sheet_name=0)
+        except Exception as e:
+            st.error(f"Failed to read Excel: {e}")
+            df = None
+
+    if df is not None:
+        st.write("Detected columns:", list(df.columns))
+        candidate_cols = [
+            c
+            for c in df.columns
+            if c and str(c).lower() in ("hierarchy", "node", "node_path", "name", "title")
+        ]
+        default_col = candidate_cols[0] if candidate_cols else df.columns[0]
+        selected_col = st.selectbox(
+            "Which column contains the taxonomy node labels?",
+            df.columns,
+            index=list(df.columns).index(default_col),
+        )
+        try:
+            sample_vals = df[selected_col].dropna().astype(str).unique().tolist()
+        except Exception:
+            sample_vals = df[selected_col].dropna().astype(str).head(100).tolist()
+        node_choice = st.selectbox("Choose taxonomy node", sample_vals)
+    else:
+        st.info("Auto-detected no taxonomy file — upload an Excel file to select taxonomy nodes.")
+        node_choice = st.text_input("Default taxonomy node (used when no Excel uploaded):", value="DEFAULT_NODE")
+
+    # === Query options / Prompt editor / Run ===
+    st.subheader("Query options")
+
+    # Hidden defaults used by the workflow
+    DEFAULT_REQUIRED_FIELDS = [
+        "summary",
+        "node_financials",
+        "node_players",
+        "pure_play_estimates",
+        "methodology_summary",
+        "financial_commentary",
+        "player_commentary",
+        "sources"
+    ]
+    DEFAULT_QUERY_DEPTH = 3
+
+    # 1) Global context (editable, pre-filled)
+    default_global_context = """We are conducting a systematic, node-by-node analysis of the global Aerospace & Defence industry.
 This industry is organized into a 5-tier hierarchical taxonomy:
 1. Total — The overall Aerospace & Defence industry.
 2. Main Categories — Aerospace and Defence.
@@ -687,6 +689,14 @@ with col2:
                     j = resp.json()
                     st.subheader("Response (JSON)")
                     st.json(j)
+                    # 🔌 Make the rest of the app aware of this response
+                    st.session_state["latest_response"] = j
+                    try:
+                        st.session_state["last_response"] = j[0] if isinstance(j, list) else j
+                    except Exception:
+                        st.session_state["last_response"] = j
+
+                    # Optional table rendering if your webhook returns rows
                     if isinstance(j, dict) and "rows" in j and isinstance(j["rows"], list) and len(j["rows"]) > 0:
                         try:
                             df_rows = pd.DataFrame(j["rows"])
@@ -700,67 +710,68 @@ with col2:
             except Exception as e:
                 st.error(f"Request failed: {e}")
 
-st.divider()
-st.markdown("## 🔍 Latest Webhook Response")
+    with right_col:
+        st.divider()
+        st.markdown("## 🔍 Latest Webhook Response")
 
-# When the webhook responds, show structured info
-if "last_response" not in st.session_state:
-    st.session_state["last_response"] = None
+        # When the webhook responds, show structured info
+        if "last_response" not in st.session_state:
+            st.session_state["last_response"] = None
 
-# Webhook listener / refresh button
-col1, col2 = st.columns([4, 1])
-with col1:
-    st.markdown("When you trigger the workflow, the response will appear here automatically if sent back from n8n.")
-with col2:
-    if st.button("🔄 Refresh"):
-        st.session_state["last_response"] = None
+        # Webhook listener / refresh button
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.markdown("When you trigger the workflow, the response will appear here automatically if sent back from n8n.")
+        with col2:
+            if st.button("🔄 Refresh"):
+                st.session_state["last_response"] = None
 
-# Simulate fetching (you'll replace this with actual webhook receiver logic later)
-if st.session_state["last_response"]:
-    data = st.session_state["last_response"]
-else:
-    st.info("Awaiting response from n8n...")
-    data = None
+        # Simulate fetching (you'll replace this with actual webhook receiver logic later)
+        if st.session_state["last_response"]:
+            data = st.session_state["last_response"]
+        else:
+            st.info("Awaiting response from n8n...")
+            data = None
 
-if data:
-    st.success("✅ Response received")
+        if data:
+            st.success("✅ Response received")
 
-    # Top metadata
-    st.subheader("Metadata")
-    meta_cols = st.columns(4)
-    meta_cols[0].metric("Model", data.get("model", "—"))
-    meta_cols[1].metric("Tokens", data.get("total_tokens", "—"))
-    meta_cols[2].metric("Cost (USD)", f"${data.get('cost_usd', 0):.4f}")
-    meta_cols[3].metric("Timestamp", data.get("timestamp", "—"))
+            # Top metadata
+            st.subheader("Metadata")
+            meta_cols = st.columns(4)
+            meta_cols[0].metric("Model", data.get("model", "—"))
+            meta_cols[1].metric("Tokens", data.get("total_tokens", "—"))
+            meta_cols[2].metric("Cost (USD)", f"${data.get('cost_usd', 0):.4f}")
+            meta_cols[3].metric("Timestamp", data.get("timestamp", "—"))
 
-    # Citations
-    if data.get("citations"):
-        with st.expander("📚 Citations"):
-            for c in data["citations"]:
-                st.markdown(f"- [{c}]({c})")
+            # Citations
+            if data.get("citations"):
+                with st.expander("📚 Citations"):
+                    for c in data["citations"]:
+                        st.markdown(f"- [{c}]({c})")
 
-    # Search results (if present)
-    if data.get("search_results"):
-        with st.expander("🔎 Search Results"):
-            for r in data["search_results"]:
-                st.markdown(f"**{r.get('title','')}** — [{r.get('url','')}]({r.get('url','')})")
-                st.caption(r.get("snippet", ""))
+            # Search results (if present)
+            if data.get("search_results"):
+                with st.expander("🔎 Search Results"):
+                    for r in data["search_results"]:
+                        st.markdown(f"**{r.get('title','')}** — [{r.get('url','')}]({r.get('url','')})")
+                        st.caption(r.get("snippet", ""))
 
-    # LLM Output
-    st.subheader("🧠 Model Output")
-    view_mode = st.radio("View as:", ["Parsed JSON", "Raw Text"], horizontal=True)
+            # LLM Output
+            st.subheader("🧠 Model Output")
+            view_mode = st.radio("View as:", ["Parsed JSON", "Raw Text"], horizontal=True)
 
-    if view_mode == "Parsed JSON" and "llm_output_parsed" in data:
-        st.json(data["llm_output_parsed"])
-    else:
-        st.code(data.get("llm_output_raw", ""), language="json")
+            if view_mode == "Parsed JSON" and "llm_output_parsed" in data:
+                st.json(data["llm_output_parsed"])
+            else:
+                st.code(data.get("llm_output_raw", ""), language="json")
 
-    # Advanced diagnostics
-    with st.expander("⚙️ Advanced Debug Info"):
-        st.write(data)
+            # Advanced diagnostics
+            with st.expander("⚙️ Advanced Debug Info"):
+                st.write(data)
 
-else:
-    st.markdown("Once a response arrives from n8n, you'll see model outputs, citations, and costs here.")
+        else:
+            st.markdown("Once a response arrives from n8n, you'll see model outputs, citations, and costs here.")
 
 
 # ============================================================
