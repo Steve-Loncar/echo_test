@@ -14,8 +14,38 @@ import requests
 import streamlit as st
 
 # === Configuration - replace with your webhook(s) ===
-N8N_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook-test/echo_agent"
-N8N_WRITE_URL = "https://fpgconsulting.app.n8n.cloud/webhook-test/write_agent"  # optional
+TEST_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook-test/echo_agent"
+LIVE_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook/echo_agent"
+
+# --- Environment mode toggle ---
+st.sidebar.markdown("### 🌐 Environment Mode")
+st.sidebar.info(
+    "Switch between **Test** and **Live** n8n endpoints.\n\n"
+    "- **Test** → temporary sandbox while n8n editor is executing\n"
+    "- **Live** → persistent production endpoint (workflow must be active)"
+)
+
+env_mode = st.sidebar.radio(
+    "Select environment:",
+    ["test", "live"],
+    horizontal=True,
+    help="Choose which n8n webhook environment to use for POST requests.",
+)
+
+# Dynamically assign URLs
+if env_mode == "live":
+    N8N_WEBHOOK_URL = LIVE_WEBHOOK_URL
+else:
+    N8N_WEBHOOK_URL = TEST_WEBHOOK_URL
+
+st.sidebar.markdown(
+    f"**Active Endpoint:** `{N8N_WEBHOOK_URL}`"
+)
+
+st.session_state["env_mode"] = env_mode
+
+# Optional writer endpoint (not currently used)
+N8N_WRITE_URL = N8N_WEBHOOK_URL.replace("echo_agent", "write_agent")
 
 # === Secret retrieval (Streamlit Secrets preferred) ===
 try:
@@ -852,55 +882,6 @@ webhook_url = st.text_input(
 # Save automatically
 st.session_state["webhook_url"] = webhook_url.strip()
 
-
-# ============================================================
-# 🔀 Test / Live Mode Toggle
-# ============================================================
-
-st.divider()
-st.markdown("## 🧪 Environment Mode Switch")
-st.markdown("""
-Use this toggle to quickly switch between your **Test** and **Live** webhook environments.  
-
-- **Test Mode** → lower cost, sandbox-safe environment  
-- **Live Mode** → production endpoint for real research runs  
-
-> ⚠️ Always confirm you're in the right mode before sending expensive API calls.
-""")
-
-# Default URLs — replace with your real ones
-TEST_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook-test/echo_agent"
-LIVE_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook/echo_agent"
-
-if "env_mode" not in st.session_state:
-    st.session_state["env_mode"] = "test"
-
-# Toggle buttons
-col1, col2 = st.columns([1, 4])
-with col1:
-    env_choice = st.radio(
-        "Mode",
-        ["test", "live"],
-        horizontal=True,
-        index=0 if st.session_state["env_mode"] == "test" else 1,
-        help="Switch between sandbox and production webhook targets."
-    )
-
-# Update mode and URL
-if env_choice != st.session_state["env_mode"]:
-    st.session_state["env_mode"] = env_choice
-    st.session_state["webhook_url"] = (
-        TEST_WEBHOOK_URL if env_choice == "test" else LIVE_WEBHOOK_URL
-    )
-
-# Visual cue
-mode_color = "orange" if env_choice == "test" else "red"
-st.markdown(
-    f"<div style='padding:8px;border-radius:8px;background-color:{mode_color};color:white;text-align:center;'>"
-    f"🧭 Current Mode: <b>{env_choice.upper()}</b>"
-    "</div>",
-    unsafe_allow_html=True,
-)
 
 if webhook_url.strip():
     if st.button("🔄 Fetch Latest Response from n8n"):
