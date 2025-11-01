@@ -160,19 +160,19 @@ def compute_nodes_to_query(df_tax: pd.DataFrame, selected_path_or_name: str, rel
 
     return results
 
-# --- Layout: equal 50/50 columns for query and response ---------------------
-left_col, right_col = st.columns([1, 1], gap="large")
+# --- Balanced 50/50 layout for full app --------------------------------------
+left_col, right_col = st.columns(2, gap="large")
 
+# Keep all interactive setup and query logic strictly inside left_col
 with left_col:
     st.title("n8n Echo / Query Test")
     st.markdown("Upload your taxonomy Excel, choose nodes, edit prompt and LLM settings, then POST to n8n.")
     st.divider()
 
-    # 1) Upload taxonomy Excel and choose column to use as node labels
+    # 1️⃣ Taxonomy Upload and Selection
     node_choice = None
     df = None
 
-    # Auto-detect taxonomy file in repo (GitHub). Patterns are checked in order.
     LOCAL_TAXONOMY_FILE = None
     patterns = [
         "./Aero and Defence Taxonomy Structure for n8n.xlsx",
@@ -266,13 +266,13 @@ All CAGR and margin figures are FY23–FY25 unless otherwise noted.
 
 You must respect taxonomy boundaries — do not merge, rename, or infer data from unrelated nodes.
 """
-global_context = st.text_area("Global context (applies to all nodes in this run)", value=default_global_context, height=260)
+    global_context = st.text_area("Global context (applies to all nodes in this run)", value=default_global_context, height=260)
 
-# 2) Prompt editor (default strict JSON prompt)
-st.markdown("### Prompt editor")
-st.markdown("The prompt below is pre-filled with a strict JSON schema for the LLM. Edit it to refine what you send to the model. Use placeholders: {{display_name}}, {{path}}, {{node_id}}, {{required_fields}}, {{extra_context}}, {{query_depth}}, {{global_context}}")
+    # 2️⃣ Prompt editor (default strict JSON prompt)
+    st.markdown("### Prompt editor")
+    st.markdown("The prompt below is pre-filled with a strict JSON schema for the LLM. Edit it to refine what you send to the model. Use placeholders: {{display_name}}, {{path}}, {{node_id}}, {{required_fields}}, {{extra_context}}, {{query_depth}}, {{global_context}}")
 
-default_prompt = """You are a strict JSON-outputting market analyst. Return exactly ONE JSON OBJECT and nothing else (no commentary, no explanation, no code fences).
+    default_prompt = """You are a strict JSON-outputting market analyst. Return exactly ONE JSON OBJECT and nothing else (no commentary, no explanation, no code fences).
 
 Schema (MUST be followed exactly):
 
@@ -502,286 +502,288 @@ else:
     model_name = "sonar"
 
 # Default analytical tuning for refined research
-DEFAULT_MODEL_NAME = model_name
-DEFAULT_TEMPERATURE = 0.35
-DEFAULT_MAX_TOKENS = 5000
+    DEFAULT_MODEL_NAME = model_name
+    DEFAULT_TEMPERATURE = 0.35
+    DEFAULT_MAX_TOKENS = 5000
 
-temperature = st.slider(
-    "Temperature (analytical creativity)",
-    min_value=0.0, max_value=1.0, value=DEFAULT_TEMPERATURE, step=0.05,
-    help="Higher = more flexible reasoning and interpolation. 0.35 is ideal for analytical estimation."
-)
-
-env_mode = st.session_state.get("env_mode", "test")
-if env_mode == "live" and temperature > 0.5:
-    st.warning(
-        "⚠️ You are in LIVE mode with a high temperature — "
-        "results may vary and cost more. "
-        "Use lower temperatures for reproducibility and lower cost."
+    temperature = st.slider(
+        "Temperature (analytical creativity)",
+        min_value=0.0, max_value=1.0, value=DEFAULT_TEMPERATURE, step=0.05,
+        help="Higher = more flexible reasoning and interpolation. 0.35 is ideal for analytical estimation."
     )
 
-max_tokens = st.number_input(
-    "Max tokens (response length)",
-    min_value=256, max_value=8000, value=DEFAULT_MAX_TOKENS,
-    help="Higher allows longer structured analyses and full financial tables. Costs scale with token count."
-)
+    env_mode = st.session_state.get("env_mode", "test")
+    if env_mode == "live" and temperature > 0.5:
+        st.warning(
+            "⚠️ You are in LIVE mode with a high temperature — "
+            "results may vary and cost more. "
+            "Use lower temperatures for reproducibility and lower cost."
+        )
 
-# === Timeout Configuration ===
-recommended_timeout = {
-    "sonar": 120000,
-    "sonar-pro": 180000,
-    "sonar-deep-research": 240000,
-}
+    max_tokens = st.number_input(
+        "Max tokens (response length)",
+        min_value=256, max_value=8000, value=DEFAULT_MAX_TOKENS,
+        help="Higher allows longer structured analyses and full financial tables. Costs scale with token count."
+    )
 
-default_timeout = recommended_timeout.get(model_name, 120000)
+    # === Timeout Configuration ===
+    recommended_timeout = {
+        "sonar": 120000,
+        "sonar-pro": 180000,
+        "sonar-deep-research": 240000,
+    }
 
-timeout_ms = st.number_input(
-    "Timeout (ms)",
-    min_value=30000,
-    max_value=300000,
-    value=int(default_timeout),
-    step=10000,
-    help=f"Recommended: {default_timeout} ms for {model_name}. Longer models take more time — and cost more tokens.",
-)
+    default_timeout = recommended_timeout.get(model_name, 120000)
 
-st.caption("💡 Increase this if your deeper research calls time out. Costs scale roughly with total tokens used.")
+    timeout_ms = st.number_input(
+        "Timeout (ms)",
+        min_value=30000,
+        max_value=300000,
+        value=int(default_timeout),
+        step=10000,
+        help=f"Recommended: {default_timeout} ms for {model_name}. Longer models take more time — and cost more tokens.",
+    )
 
-include_retrieval = st.checkbox("Include retrieval (top-k docs) before sending to LLM", value=False,
-                                help="If enabled, n8n should run a retriever and include retrieved_docs in the prompt.")
-priority = st.selectbox("Priority", ["normal", "high", "low"], index=0,
-                        help="Tag the job priority; can be used by downstream schedulers or model routing.")
-dry_run = st.checkbox("Dry run (don't persist downstream)", value=False, help="If set, results won't be written to datasets downstream.")
+    st.caption("💡 Increase this if your deeper research calls time out. Costs scale roughly with total tokens used.")
 
-# Run / Preview buttons
-col1, col2 = st.columns([1, 1])
-with col1:
-    if st.button("Preview merged prompt"):
-        # Simple client-side preview: best-effort replace of placeholders with current inputs
-        display_preview = prompt_text
-        display_preview = display_preview.replace("{{global_context}}", str(global_context))
-        display_preview = display_preview.replace("{{display_name}}", str(node_choice))
-        display_preview = display_preview.replace("{{path}}", str(node_choice))
-        display_preview = display_preview.replace("{{required_fields}}", str(DEFAULT_REQUIRED_FIELDS))
-        display_preview = display_preview.replace("{{extra_context}}", str(extra_context))
-        display_preview = display_preview.replace("{{query_depth}}", str(DEFAULT_QUERY_DEPTH))
-        st.subheader("Merged prompt preview")
-        st.code(display_preview)
-with col2:
-    if st.button("Run query"):
-        if not node_choice:
-            st.error("No taxonomy node selected. Upload an Excel and select a node first.")
-        else:
-            # Resolve actual node fields from the uploaded taxonomy (best-effort)
-            node_id_val = None
-            node_path = str(node_choice)
-            display_name = str(node_choice)
-            level_val = None
-            parent_id_val = None
-            node_row = None
+    include_retrieval = st.checkbox("Include retrieval (top-k docs) before sending to LLM", value=False,
+                                    help="If enabled, n8n should run a retriever and include retrieved_docs in the prompt.")
+    priority = st.selectbox("Priority", ["normal", "high", "low"], index=0,
+                            help="Tag the job priority; can be used by downstream schedulers or model routing.")
+    dry_run = st.checkbox("Dry run (don't persist downstream)", value=False,
+                          help="If set, results won't be written to datasets downstream.")
 
-            if df is not None:
-                try:
-                    # 1) Prefer exact match on the user-selected column (selected_col) if available
-                    if 'selected_col' in locals() and selected_col in df.columns:
-                        matches = df[df[selected_col].astype(str) == str(node_choice)]
-                        if not matches.empty:
-                            node_row = matches.iloc[0]
+    # ▶️ Run / Preview controls (side-by-side)
+    run_col1, run_col2 = st.columns([1, 1])
+    with run_col1:
+        if st.button("Preview merged prompt"):
+            display_preview = prompt_text
+            display_preview = display_preview.replace("{{global_context}}", str(global_context))
+            display_preview = display_preview.replace("{{display_name}}", str(node_choice))
+            display_preview = display_preview.replace("{{path}}", str(node_choice))
+            display_preview = display_preview.replace("{{required_fields}}", str(DEFAULT_REQUIRED_FIELDS))
+            display_preview = display_preview.replace("{{extra_context}}", str(extra_context))
+            display_preview = display_preview.replace("{{query_depth}}", str(DEFAULT_QUERY_DEPTH))
+            st.subheader("Merged prompt preview")
+            st.code(display_preview)
 
-                    # 2) Try common column names for exact matches
-                    if node_row is None:
-                        for colname in ('path', 'display_name', 'name', 'title'):
-                            if colname in df.columns:
-                                matches = df[df[colname].astype(str) == str(node_choice)]
-                                if not matches.empty:
-                                    node_row = matches.iloc[0]
-                                    break
+    with run_col2:
+        if st.button("Run query"):
+            if not node_choice:
+                st.error("No taxonomy node selected. Upload an Excel and select a node first.")
+            else:
+                # Resolve actual node fields from the uploaded taxonomy (best-effort)
+                node_id_val = None
+                node_path = str(node_choice)
+                display_name = str(node_choice)
+                level_val = None
+                parent_id_val = None
+                node_row = None
 
-                    # 3) Substring fallback on the selected column
-                    if node_row is None and 'selected_col' in locals() and selected_col in df.columns:
-                        try:
-                            matches = df[df[selected_col].astype(str).str.contains(str(node_choice), na=False, case=False)]
+                if df is not None:
+                    try:
+                        # 1) Prefer exact match on the user-selected column (selected_col) if available
+                        if 'selected_col' in locals() and selected_col in df.columns:
+                            matches = df[df[selected_col].astype(str) == str(node_choice)]
                             if not matches.empty:
                                 node_row = matches.iloc[0]
-                        except Exception:
-                            pass
 
-                    # 4) Path-prefix fallback
-                    if node_row is None and 'path' in df.columns:
-                        matched = df[df['path'].astype(str).str.startswith(str(node_choice))]
-                        if not matched.empty:
-                            node_row = matched.iloc[0]
+                        # 2) Try common column names for exact matches
+                        if node_row is None:
+                            for colname in ('path', 'display_name', 'name', 'title'):
+                                if colname in df.columns:
+                                    matches = df[df[colname].astype(str) == str(node_choice)]
+                                    if not matches.empty:
+                                        node_row = matches.iloc[0]
+                                        break
 
-                    # 5) Extract fields if we found a row
-                    if node_row is not None:
-                        node_id_val = node_row.get('node_id') or node_row.get('id') or node_row.get('nodeId') or node_row.get('NodeID')
-                        # If no explicit id column, derive a stable id from the dataframe index (best-effort)
-                        if not node_id_val:
+                        # 3) Substring fallback on the selected column
+                        if node_row is None and 'selected_col' in locals() and selected_col in df.columns:
                             try:
-                                idx = int(node_row.name)
-                                node_id_val = f"N{idx:05d}"
+                                matches = df[df[selected_col].astype(str).str.contains(str(node_choice), na=False, case=False)]
+                                if not matches.empty:
+                                    node_row = matches.iloc[0]
                             except Exception:
-                                node_id_val = None
+                                pass
 
-                        node_path = node_row.get('path') or node_path
-                        if 'selected_col' in locals() and selected_col in node_row:
-                            display_name = node_row.get('display_name') or node_row.get(selected_col) or display_name
-                        else:
-                            display_name = node_row.get('display_name') or display_name
+                        # 4) Path-prefix fallback
+                        if node_row is None and 'path' in df.columns:
+                            matched = df[df['path'].astype(str).str.startswith(str(node_choice))]
+                            if not matched.empty:
+                                node_row = matched.iloc[0]
 
-                        try:
-                            level_val = int(node_row['level']) if 'level' in node_row and pd.notna(node_row['level']) else level_val
-                        except Exception:
-                            level_val = level_val
+                        # 5) Extract fields if we found a row
+                        if node_row is not None:
+                            node_id_val = node_row.get('node_id') or node_row.get('id') or node_row.get('nodeId') or node_row.get('NodeID')
+                            # If no explicit id column, derive a stable id from the dataframe index (best-effort)
+                            if not node_id_val:
+                                try:
+                                    idx = int(node_row.name)
+                                    node_id_val = f"N{idx:05d}"
+                                except Exception:
+                                    node_id_val = None
 
-                        parent_id_val = node_row.get('parent_id') or node_row.get('parentId') or parent_id_val
+                            node_path = node_row.get('path') or node_path
+                            if 'selected_col' in locals() and selected_col in node_row:
+                                display_name = node_row.get('display_name') or node_row.get(selected_col) or display_name
+                            else:
+                                display_name = node_row.get('display_name') or display_name
 
-                except Exception as e:
-                    # Non-fatal: keep defaults and surface a warning for debugging
-                    st.warning(f"Node lookup warning: {e}")
+                            try:
+                                level_val = int(node_row['level']) if 'level' in node_row and pd.notna(node_row['level']) else level_val
+                            except Exception:
+                                level_val = level_val
 
-            # Final fallback: try deriving id from dataframe index where possible
-            if not node_id_val and df is not None and 'selected_col' in locals() and selected_col in df.columns:
-                try:
-                    idxs = df[df[selected_col].astype(str) == str(node_choice)].index
-                    if len(idxs) > 0:
-                        node_id_val = f"N{int(idxs[0]):05d}"
-                except Exception:
+                            parent_id_val = node_row.get('parent_id') or node_row.get('parentId') or parent_id_val
+
+                    except Exception as e:
+                        # Non-fatal: keep defaults and surface a warning for debugging
+                        st.warning(f"Node lookup warning: {e}")
+
+                # Final fallback: try deriving id from dataframe index where possible
+                if not node_id_val and df is not None and 'selected_col' in locals() and selected_col in df.columns:
+                    try:
+                        idxs = df[df[selected_col].astype(str) == str(node_choice)].index
+                        if len(idxs) > 0:
+                            node_id_val = f"N{int(idxs[0]):05d}"
+                    except Exception:
+                        node_id_val = None
+
+                # If still unresolved, leave node_id as None (better than a misleading placeholder)
+                if not node_id_val:
                     node_id_val = None
 
-            # If still unresolved, leave node_id as None (better than a misleading placeholder)
-            if not node_id_val:
-                node_id_val = None
+                single_node = {
+                    "node_id": node_id_val,
+                    "path": node_path,
+                    "display_name": display_name,
+                    "level": level_val,
+                    "parent_id": parent_id_val
+                }
 
-            single_node = {
-                "node_id": node_id_val,
-                "path": node_path,
-                "display_name": display_name,
-                "level": level_val,
-                "parent_id": parent_id_val
-            }
+                # Debug output in the UI so you can confirm what was resolved
+                st.write("Resolved node:", single_node)
 
-            # Debug output in the UI so you can confirm what was resolved
-            st.write("Resolved node:", single_node)
+                payload = {
+                    "taxonomy_node": node_choice,
+                    "nodes_to_query": [single_node],
+                    "rel_depth": 0,
+                    "query_depth": int(DEFAULT_QUERY_DEPTH),
+                    "required_fields": DEFAULT_REQUIRED_FIELDS,
+                    "global_context": global_context,
+                    "extra_context": extra_context,
+                    "prompt_text": prompt_text,
+                    "model_name": model_name,
+                    "temperature": float(temperature),
+                    "max_tokens": int(max_tokens),
+                    "include_retrieval": bool(include_retrieval),
+                    "priority": priority,
+                    "dry_run": bool(dry_run),
+                    "timeout_ms": timeout_ms,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "env_mode": st.session_state.get("env_mode", "test"),
+                    "client_timestamp": time.time()
+                }
 
-            payload = {
-                "taxonomy_node": node_choice,
-                "nodes_to_query": [single_node],
-                "rel_depth": 0,
-                "query_depth": int(DEFAULT_QUERY_DEPTH),
-                "required_fields": DEFAULT_REQUIRED_FIELDS,
-                "global_context": global_context,
-                "extra_context": extra_context,
-                "prompt_text": prompt_text,
-                "model_name": model_name,
-                "temperature": float(temperature),
-                "max_tokens": int(max_tokens),
-                "include_retrieval": bool(include_retrieval),
-                "priority": priority,
-                "dry_run": bool(dry_run),
-                "timeout_ms": timeout_ms,
-                "timestamp": datetime.utcnow().isoformat(),
-                "env_mode": st.session_state.get("env_mode", "test"),
-                "client_timestamp": time.time()
-            }
+                headers = {"X-Webhook-Secret": WEBHOOK_SECRET, "Content-Type": "application/json"}
 
-            headers = {"X-Webhook-Secret": WEBHOOK_SECRET, "Content-Type": "application/json"}
-
-            try:
-                resp = requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=120)
-                st.write("Status:", resp.status_code)
                 try:
-                    j = resp.json()
-                    st.subheader("Response (JSON)")
-                    st.json(j)
-                    # 🔌 Make the rest of the app aware of this response
-                    st.session_state["latest_response"] = j
+                    resp = requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=120)
+                    st.write("Status:", resp.status_code)
                     try:
-                        st.session_state["last_response"] = j[0] if isinstance(j, list) else j
-                    except Exception:
-                        st.session_state["last_response"] = j
-
-                    # Optional table rendering if your webhook returns rows
-                    if isinstance(j, dict) and "rows" in j and isinstance(j["rows"], list) and len(j["rows"]) > 0:
+                        j = resp.json()
+                        st.subheader("Response (JSON)")
+                        st.json(j)
+                        # 🔌 Make the rest of the app aware of this response
+                        st.session_state["latest_response"] = j
                         try:
-                            df_rows = pd.DataFrame(j["rows"])
-                            st.subheader("Rows (table)")
-                            st.dataframe(df_rows)
+                            st.session_state["last_response"] = j[0] if isinstance(j, list) else j
                         except Exception:
-                            st.write("Rows present but failed to render as table.")
-                except Exception:
-                    st.subheader("Raw response")
-                    st.text(resp.text)
-            except Exception as e:
-                st.error(f"Request failed: {e}")
+                            st.session_state["last_response"] = j
 
-    with right_col:
-        st.divider()
-        st.markdown("## 🔍 Latest Webhook Response")
-        st.caption("💡 Responses from the Perplexity LLM (via n8n) will appear here once the workflow finishes.")
-        st.divider()
+                        # Optional table rendering if your webhook returns rows
+                        if isinstance(j, dict) and "rows" in j and isinstance(j["rows"], list) and len(j["rows"]) > 0:
+                            try:
+                                df_rows = pd.DataFrame(j["rows"])
+                                st.subheader("Rows (table)")
+                                st.dataframe(df_rows)
+                            except Exception:
+                                st.write("Rows present but failed to render as table.")
+                    except Exception:
+                        st.subheader("Raw response")
+                        st.text(resp.text)
+                except Exception as e:
+                    st.error(f"Request failed: {e}")
 
-        # This section will later hold formatted tables, metrics, and analysis
-        st.markdown("### 📊 Structured Results Placeholder")
-        st.caption("Once response parsing is added, financial tables and player data will render here.")
 
-        # When the webhook responds, show structured info
-        if "last_response" not in st.session_state:
+# 🧩 Right column — dedicated to response output
+with right_col:
+    st.divider()
+    st.markdown("## 🔍 Latest Webhook Response")
+    st.caption("💡 Responses from the Perplexity LLM (via n8n) will appear here once the workflow finishes.")
+    st.divider()
+
+    st.markdown("### 📊 Structured Results Placeholder")
+    st.caption("Once response parsing is added, financial tables and player data will render here.")
+
+    # When the webhook responds, show structured info
+    if "last_response" not in st.session_state:
+        st.session_state["last_response"] = None
+
+    # Webhook listener / refresh button
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.markdown("When you trigger the workflow, the response will appear here automatically if sent back from n8n.")
+    with col2:
+        if st.button("🔄 Refresh"):
             st.session_state["last_response"] = None
 
-        # Webhook listener / refresh button
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            st.markdown("When you trigger the workflow, the response will appear here automatically if sent back from n8n.")
-        with col2:
-            if st.button("🔄 Refresh"):
-                st.session_state["last_response"] = None
+    # Simulate fetching (you'll replace this with actual webhook receiver logic later)
+    if st.session_state["last_response"]:
+        data = st.session_state["last_response"]
+    else:
+        st.info("Awaiting response from n8n...")
+        data = None
 
-        # Simulate fetching (you'll replace this with actual webhook receiver logic later)
-        if st.session_state["last_response"]:
-            data = st.session_state["last_response"]
+    if data:
+        st.success("✅ Response received")
+
+        # Top metadata
+        st.subheader("Metadata")
+        meta_cols = st.columns(4)
+        meta_cols[0].metric("Model", data.get("model", "—"))
+        meta_cols[1].metric("Tokens", data.get("total_tokens", "—"))
+        meta_cols[2].metric("Cost (USD)", f"${data.get('cost_usd', 0):.4f}")
+        meta_cols[3].metric("Timestamp", data.get("timestamp", "—"))
+
+        # Citations
+        if data.get("citations"):
+            with st.expander("📚 Citations"):
+                for c in data["citations"]:
+                    st.markdown(f"- [{c}]({c})")
+
+        # Search results (if present)
+        if data.get("search_results"):
+            with st.expander("🔎 Search Results"):
+                for r in data["search_results"]:
+                    st.markdown(f"**{r.get('title','')}** — [{r.get('url','')}]({r.get('url','')})")
+                    st.caption(r.get("snippet", ""))
+
+        # LLM Output
+        st.subheader("🧠 Model Output")
+        view_mode = st.radio("View as:", ["Parsed JSON", "Raw Text"], horizontal=True)
+
+        if view_mode == "Parsed JSON" and "llm_output_parsed" in data:
+            st.json(data["llm_output_parsed"])
         else:
-            st.info("Awaiting response from n8n...")
-            data = None
+            st.code(data.get("llm_output_raw", ""), language="json")
 
-        if data:
-            st.success("✅ Response received")
+        # Advanced diagnostics
+        with st.expander("⚙️ Advanced Debug Info"):
+            st.write(data)
 
-            # Top metadata
-            st.subheader("Metadata")
-            meta_cols = st.columns(4)
-            meta_cols[0].metric("Model", data.get("model", "—"))
-            meta_cols[1].metric("Tokens", data.get("total_tokens", "—"))
-            meta_cols[2].metric("Cost (USD)", f"${data.get('cost_usd', 0):.4f}")
-            meta_cols[3].metric("Timestamp", data.get("timestamp", "—"))
-
-            # Citations
-            if data.get("citations"):
-                with st.expander("📚 Citations"):
-                    for c in data["citations"]:
-                        st.markdown(f"- [{c}]({c})")
-
-            # Search results (if present)
-            if data.get("search_results"):
-                with st.expander("🔎 Search Results"):
-                    for r in data["search_results"]:
-                        st.markdown(f"**{r.get('title','')}** — [{r.get('url','')}]({r.get('url','')})")
-                        st.caption(r.get("snippet", ""))
-
-            # LLM Output
-            st.subheader("🧠 Model Output")
-            view_mode = st.radio("View as:", ["Parsed JSON", "Raw Text"], horizontal=True)
-
-            if view_mode == "Parsed JSON" and "llm_output_parsed" in data:
-                st.json(data["llm_output_parsed"])
-            else:
-                st.code(data.get("llm_output_raw", ""), language="json")
-
-            # Advanced diagnostics
-            with st.expander("⚙️ Advanced Debug Info"):
-                st.write(data)
-
-        else:
-            st.markdown("Once a response arrives from n8n, you'll see model outputs, citations, and costs here.")
+    else:
+        st.markdown("Once a response arrives from n8n, you'll see model outputs, citations, and costs here.")
 
 
 # ============================================================
