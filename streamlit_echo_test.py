@@ -169,7 +169,7 @@ with left_col:
     st.markdown("Upload your taxonomy Excel, choose nodes, edit prompt and LLM settings, then POST to n8n.")
     st.divider()
 
-    # 1️⃣ Taxonomy Upload and Selection
+    # 1. Taxonomy Upload and Selection
     node_choice = None
     df = None
 
@@ -195,7 +195,7 @@ with left_col:
             st.warning(f"Auto-load failed ({LOCAL_TAXONOMY_FILE}): {e}")
             df = None
 
-    uploaded = st.file_uploader("Upload taxonomy Excel (.xlsx) — or leave blank to use auto-detected file", type=["xlsx"])
+    uploaded = st.file_uploader("Upload taxonomy Excel (.xlsx) - or leave blank to use auto-detected file", type=["xlsx"])
 
     # Only read the uploaded file if auto-load did not already populate df
     if uploaded and df is None:
@@ -224,7 +224,7 @@ with left_col:
             sample_vals = df[selected_col].dropna().astype(str).head(100).tolist()
         node_choice = st.selectbox("Choose taxonomy node", sample_vals)
     else:
-        st.info("Auto-detected no taxonomy file — upload an Excel file to select taxonomy nodes.")
+        st.info("Auto-detected no taxonomy file - upload an Excel file to select taxonomy nodes.")
         node_choice = st.text_input("Default taxonomy node (used when no Excel uploaded):", value="DEFAULT_NODE")
 
     # === Query options / Prompt editor / Run ===
@@ -246,32 +246,33 @@ with left_col:
     # 1) Global context (editable, pre-filled)
     default_global_context = """We are conducting a systematic, node-by-node analysis of the global Aerospace & Defence industry.
 This industry is organized into a 5-tier hierarchical taxonomy:
-1. Total — The overall Aerospace & Defence industry.
-2. Main Categories — Aerospace and Defence.
-3. Sectors — Subdivisions within each Main Category.
-4. Sub-Sectors — Granular specializations within each Sector.
-5. Sub-Sub-Sectors — Final level nodes, which may contain pure-play or adjacent market players.
+1. Total - The overall Aerospace & Defence industry.
+2. Main Categories - Aerospace and Defence.
+3. Sectors - Subdivisions within each Main Category.
+4. Sub-Sectors - Granular specializations within each Sector.
+5. Sub-Sub-Sectors - Final level nodes, which may contain pure-play or adjacent market players.
 
 Before performing any analysis, read and interpret the Aerospace & Defence taxonomy from this Excel file:
 https://raw.githubusercontent.com/Steve-Loncar/echo_test/main/taxonomy_normalized_cleaned.xlsx
 
 Use this taxonomy to understand the hierarchy, relationships, and node structure.
-Do not attempt to recreate or re-summarise it — just use it to inform scope and boundaries for the node analyses.
+Do not attempt to recreate or re-summarise it - just use it to inform scope and boundaries for the node analyses.
 
-Each node represents a distinct scope of analysis. Nodes are independent — data, players, and commentary
+Each node represents a distinct scope of analysis. Nodes are independent - data, players, and commentary
 should be limited to the node’s direct scope and immediate children only.
 
 All financials are in USD billions unless otherwise stated.
-All CAGR and margin figures are FY23–FY25 unless otherwise noted.
+All CAGR and margin figures are FY23-FY25 unless otherwise noted.
 
-You must respect taxonomy boundaries — do not merge, rename, or infer data from unrelated nodes.
+You must respect taxonomy boundaries - do not merge, rename, or infer data from unrelated nodes.
 """
     global_context = st.text_area("Global context (applies to all nodes in this run)", value=default_global_context, height=260)
 
-    # 2️⃣ Prompt editor (default strict JSON prompt)
+    # 2. Prompt editor (default strict JSON prompt)
     st.markdown("### Prompt editor")
     st.markdown("The prompt below is pre-filled with a strict JSON schema for the LLM. Edit it to refine what you send to the model. Use placeholders: {{display_name}}, {{path}}, {{node_id}}, {{required_fields}}, {{extra_context}}, {{query_depth}}, {{global_context}}")
 
+    # Keep everything after this indented under `with left_col:`
     default_prompt = """You are a strict JSON-outputting market analyst. Return exactly ONE JSON OBJECT and nothing else (no commentary, no explanation, no code fences).
 
 Schema (MUST be followed exactly):
@@ -407,7 +408,7 @@ Return top 5 players ranked by FY25 **node-attributable revenue** in object `nod
 }
 Clarify that all financial metrics represent **only the portion attributable to this node**, not total company results.  
 If segment data are disclosed, use those directly.  
-If not disclosed, infer using proportionate segment weightings, business mix, or peer benchmarking — and explain how attribution was determined in `attribution_basis` and `notes`.  
+If not disclosed, infer using proportionate segment weightings, business mix, or peer benchmarking - and explain how attribution was determined in `attribution_basis` and `notes`.  
 Avoid aggregating full company revenues unless the firm is a pure play in this node.
 
 ### 3. Node Pure-Play / Proxy Estimates
@@ -424,7 +425,7 @@ Return up to 3 representative pure-plays or near-adjacent proxies in `pure_play_
   "fy25_ebitda_margin_pct": number | null,
   "confidence_score": number
 }
-Explain **why** each proxy is relevant — specialization, technology overlap, customer base, or cost structure similarity — and explicitly note when using proxies instead of true participants.
+Explain **why** each proxy is relevant - specialization, technology overlap, customer base, or cost structure similarity - and explicitly note when using proxies instead of true participants.
 
 ### 4. Methodology Summary
 Purpose: ensure transparency and reproducibility of sizing approach.
@@ -434,10 +435,10 @@ In `results.methodology_summary`, concisely explain:
 - How node-level financials were attributed from segment or total-company data.  
 - Treatment of diversified companies.  
 - Any currency or inflation adjustments or conversion assumptions.
-Limit to ≤150 words.
+Limit to <=150 words.
 
 ### 5. Evidence Handling
-Every numeric or factual statement must be supported by an `evidence` object with a confidence score (0–1). 
+Every numeric or factual statement must be supported by an `evidence` object with a confidence score (0-1). 
 Evidence should reference credible financial or industry sources (company reports, market studies, analyst estimates, etc.), not blogs or forums.
 
 
@@ -451,7 +452,7 @@ Rules (MANDATORY):
 7) All confidence scores must be between 0.0 and 1.0.
 8) timestamp MUST be ISO-8601 UTC (e.g., 2025-10-27T15:21:00Z).
 9) Keep evidence array <= 10 items, ordered by confidence_score descending.
-10) If retrieval is empty/not provided, set overall confidence <= 0.5 and explain in notes: \"No retrieval evidence provided — answers are model-derived and must be verified.\"
+10) If retrieval is empty/not provided, set overall confidence <= 0.5 and explain in notes: \"No retrieval evidence provided - answers are model-derived and must be verified.\"
 11) Include methodology_summary describing how market sizing was derived.
 12) Include taxonomy_reference clarifying how this node relates to its parent and siblings.
 13) Do not include any text outside the JSON object.
@@ -467,22 +468,22 @@ Clarifications (MANDATORY):
 
 """
 
-prompt_text = st.text_area("Prompt (editable)", value=default_prompt, height=320)
+    prompt_text = st.text_area("Prompt (editable)", value=default_prompt, height=320)
 
-# 3) Extra context (node/run-level, shorter than global)
-extra_context = st.text_area("Extra context / constraints (optional, node-level)", height=100)
+    # 3. Extra context (node/run-level, shorter than global)
+    extra_context = st.text_area("Extra context / constraints (optional, node-level)", height=100)
 
-# 4) LLM model & simple technical settings (clean, consistent)
-st.markdown("### ⚙️ LLM Model & Settings — *Control accuracy, depth, and cost*")
+    # 4. LLM model & simple technical settings (kept inside left column)
+    st.markdown("### LLM Model & Settings - *Control accuracy, depth, and cost*")
 st.markdown("""
 Choose a **Perplexity Sonar** model variant and adjust parameters to balance speed, analytical depth, and cost.
 
 **Model Options**
-- 🧩 **sonar (default)** — Fast, concise, best for summaries or debugging.
-- ⚙️ **sonar-pro** — Slower but performs multi-document reasoning for better numeric coherence.
-- 🔍 **sonar-deep-research** — Most thorough, cross-validates sources and produces full analytical writeups.
+- **sonar (default)** - Fast, concise, best for summaries or debugging.
+- **sonar-pro** - Slower but performs multi-document reasoning for better numeric coherence.
+- **sonar-deep-research** - Most thorough, cross-validates sources and produces full analytical writeups.
 
-> 💸 *Note:* higher models and larger token counts may cost more per request.  
+> *Note:* higher models and larger token counts may cost more per request.  
 See [Perplexity API pricing](https://docs.perplexity.ai/docs/pricing) for current rates.
 """)
 
@@ -515,7 +516,7 @@ temperature = st.slider(
 env_mode = st.session_state.get("env_mode", "test")
 if env_mode == "live" and temperature > 0.5:
     st.warning(
-        "⚠️ You are in LIVE mode with a high temperature — "
+        "WARNING: You are in LIVE mode with a high temperature - "
         "results may vary and cost more. "
         "Use lower temperatures for reproducibility and lower cost."
     )
@@ -544,7 +545,7 @@ timeout_ms = st.number_input(
     help=f"Recommended: {default_timeout} ms for {model_name}. Longer models take more time — and cost more tokens.",
 )
 
-st.caption("💡 Increase this if your deeper research calls time out. Costs scale roughly with total tokens used.")
+st.caption("TIP: Increase this if your deeper research calls time out. Costs scale roughly with total tokens used.")
 
 include_retrieval = st.checkbox("Include retrieval (top-k docs) before sending to LLM", value=False,
                                 help="If enabled, n8n should run a retriever and include retrieved_docs in the prompt.")
@@ -553,7 +554,7 @@ priority = st.selectbox("Priority", ["normal", "high", "low"], index=0,
 dry_run = st.checkbox("Dry run (don't persist downstream)", value=False,
                       help="If set, results won't be written to datasets downstream.")
 
-# ▶️ Run / Preview controls (side-by-side)
+# Run / Preview controls (side-by-side)
 run_col1, run_col2 = st.columns([1, 1])
 with run_col1:
     if st.button("Preview merged prompt"):
@@ -694,7 +695,7 @@ with run_col2:
                         j = resp.json()
                         st.subheader("Response (JSON)")
                         st.json(j)
-                        # 🔌 Make the rest of the app aware of this response
+                        # Make the rest of the app aware of this response
                         st.session_state["latest_response"] = j
                         try:
                             st.session_state["last_response"] = j[0] if isinstance(j, list) else j
@@ -715,15 +716,16 @@ with run_col2:
                 except Exception as e:
                     st.error(f"Request failed: {e}")
 
+# Right column - dedicated to response output (50/50 with left)
+# This must remain *after* the with left_col: block ends
 
-# 🧩 Right column — dedicated to response output (50/50 with left)
 with right_col:
     st.divider()
-    st.markdown("## 🔍 Latest Webhook Response")
-    st.caption("💡 Responses from the Perplexity LLM (via n8n) will appear here once the workflow finishes.")
+    st.markdown("## Latest Webhook Response")
+    st.caption("TIP: Responses from the Perplexity LLM (via n8n) will appear here once the workflow finishes.")
     st.divider()
 
-    st.markdown("### 📊 Structured Results Placeholder")
+    st.markdown("### Structured Results Placeholder")
     st.caption("Once response parsing is added, financial tables and player data will render here.")
 
     # When the webhook responds, show structured info
@@ -779,7 +781,7 @@ with right_col:
             st.code(data.get("llm_output_raw", ""), language="json")
 
         # Advanced diagnostics
-        with st.expander("⚙️ Advanced Debug Info"):
+        with st.expander("Advanced Debug Info"):
             st.write(data)
 
     else:
@@ -797,4 +799,4 @@ with right_col:
 
 # --- Footer ---------------------------------------------------------------
 st.markdown("---")
-st.caption("Built with ❤️ using Streamlit · Connected to n8n · Perplexity Sonar models")
+st.caption("Built with love using Streamlit - Connected to n8n - Perplexity Sonar models")
