@@ -190,7 +190,16 @@ else:
 st.subheader("Query options")
 
 # Hidden defaults used by the workflow
-DEFAULT_REQUIRED_FIELDS = ["summary", "sources"]
+DEFAULT_REQUIRED_FIELDS = [
+    "summary",
+    "node_financials",
+    "node_players",
+    "pure_play_estimates",
+    "methodology_summary",
+    "financial_commentary",
+    "player_commentary",
+    "sources"
+]
 DEFAULT_QUERY_DEPTH = 3
 
 # 1) Global context (editable, pre-filled)
@@ -407,6 +416,14 @@ Rules (MANDATORY):
 13) Do not include any text outside the JSON object.
 14) Refer to the attached document taxonomy_normalized_cleaned.xlsx for the official 5-tier Aerospace & Defence taxonomy. Use it to verify scope boundaries and hierarchical relationships.
 
+Clarifications (MANDATORY):
+- You must populate **every field** in the "results" object, even if partial or estimated.
+- Do not omit or collapse sub-objects such as `node_financials`, `node_players`, or `pure_play_estimates`.
+- For numeric data, include estimates when exact figures are unavailable and describe the estimation logic in `methodology_summary`.
+- All player- and company-level metrics must reflect values **attributable to this taxonomy node only** (if disclosed, cite; if inferred, explain how).
+- Use `null` for unknown scalars and `[]` for missing arrays.
+- Always output one and only one JSON object conforming to the schema above.
+
 """
 
 prompt_text = st.text_area("Prompt (editable)", value=default_prompt, height=320)
@@ -415,17 +432,53 @@ prompt_text = st.text_area("Prompt (editable)", value=default_prompt, height=320
 extra_context = st.text_area("Extra context / constraints (optional, node-level)", height=100)
 
 # 4) LLM model & simple technical settings (clean, consistent)
-st.markdown("### LLM model & settings")
-_model_choice = st.selectbox("Model (choose or pick Other to type)", ["sonar (default)", "Other..."], index=0)
-if _model_choice == "Other...":
-    model_name = st.text_input("Model name", value="sonar")
+st.markdown("### ⚙️ LLM Model & Settings — *Control accuracy, depth, and cost*")
+st.markdown("""
+Choose a **Perplexity Sonar** model variant and adjust parameters to balance speed, analytical depth, and cost.
+
+**Model Options**
+- 🧩 **sonar (default)** — Fast, concise, best for summaries or debugging.
+- ⚙️ **sonar-pro** — Slower but performs multi-document reasoning for better numeric coherence.
+- 🔍 **sonar-deep-research** — Most thorough, cross-validates sources and produces full analytical writeups.
+
+> 💸 *Note:* higher models and larger token counts may cost more per request.  
+See [Perplexity API pricing](https://docs.perplexity.ai/docs/pricing) for current rates.
+""")
+
+_model_choice = st.selectbox(
+    "Select model variant:",
+    ["sonar (default)", "sonar-pro", "sonar-deep-research"],
+    index=2,
+    help="Select a model tuned for your analysis depth. Deep-research is most capable but slower and costlier."
+)
+
+# Map to model identifiers
+if _model_choice.startswith("sonar-pro"):
+    model_name = "sonar-pro"
+elif _model_choice.startswith("sonar-deep-research"):
+    model_name = "sonar-deep-research"
 else:
     model_name = "sonar"
 
-temperature = st.slider("Temperature (determinism)", min_value=0.0, max_value=1.0, value=0.0, step=0.05,
-                        help="Lower = more deterministic. Use 0 for structured JSON outputs.")
-max_tokens = st.number_input("Max tokens", min_value=256, max_value=8000, value=1500,
-                             help="Max tokens to request from the model. Increase if you expect long outputs.")
+# Default analytical tuning for refined research
+DEFAULT_MODEL_NAME = model_name
+DEFAULT_TEMPERATURE = 0.35
+DEFAULT_MAX_TOKENS = 5000
+
+temperature = st.slider(
+    "Temperature (analytical creativity)",
+    min_value=0.0, max_value=1.0, value=DEFAULT_TEMPERATURE, step=0.05,
+    help="Higher = more flexible reasoning and interpolation. 0.35 is ideal for analytical estimation."
+)
+
+if st.session_state["env_mode"] == "live" and temperature > 0.5:
+    st.warning("⚠️ You are in LIVE mode with a high temperature — results may vary and cost more.")
+
+max_tokens = st.number_input(
+    "Max tokens (response length)",
+    min_value=256, max_value=8000, value=DEFAULT_MAX_TOKENS,
+    help="Higher allows longer structured analyses and full financial tables. Costs scale with token count."
+)
 
 include_retrieval = st.checkbox("Include retrieval (top-k docs) before sending to LLM", value=False,
                                 help="If enabled, n8n should run a retriever and include retrieved_docs in the prompt.")
@@ -583,3 +636,411 @@ with col2:
                     st.text(resp.text)
             except Exception as e:
                 st.error(f"Request failed: {e}")
+
+st.divider()
+st.markdown("## 🔍 Latest Webhook Response")
+
+# When the webhook responds, show structured info
+if "last_response" not in st.session_state:
+    st.session_state["last_response"] = None
+
+# Webhook listener / refresh button
+col1, col2 = st.columns([4, 1])
+with col1:
+    st.markdown("When you trigger the workflow, the response will appear here automatically if sent back from n8n.")
+with col2:
+    if st.button("🔄 Refresh"):
+        st.session_state["last_response"] = None
+
+# Simulate fetching (you'll replace this with actual webhook receiver logic later)
+if st.session_state["last_response"]:
+    data = st.session_state["last_response"]
+else:
+    st.info("Awaiting response from n8n...")
+    data = None
+
+if data:
+    st.success("✅ Response received")
+
+    # Top metadata
+    st.subheader("Metadata")
+    meta_cols = st.columns(4)
+    meta_cols[0].metric("Model", data.get("model", "—"))
+    meta_cols[1].metric("Tokens", data.get("total_tokens", "—"))
+    meta_cols[2].metric("Cost (USD)", f"${data.get('cost_usd', 0):.4f}")
+    meta_cols[3].metric("Timestamp", data.get("timestamp", "—"))
+
+    # Citations
+    if data.get("citations"):
+        with st.expander("📚 Citations"):
+            for c in data["citations"]:
+                st.markdown(f"- [{c}]({c})")
+
+    # Search results (if present)
+    if data.get("search_results"):
+        with st.expander("🔎 Search Results"):
+            for r in data["search_results"]:
+                st.markdown(f"**{r.get('title','')}** — [{r.get('url','')}]({r.get('url','')})")
+                st.caption(r.get("snippet", ""))
+
+    # LLM Output
+    st.subheader("🧠 Model Output")
+    view_mode = st.radio("View as:", ["Parsed JSON", "Raw Text"], horizontal=True)
+
+    if view_mode == "Parsed JSON" and "llm_output_parsed" in data:
+        st.json(data["llm_output_parsed"])
+    else:
+        st.code(data.get("llm_output_raw", ""), language="json")
+
+    # Advanced diagnostics
+    with st.expander("⚙️ Advanced Debug Info"):
+        st.write(data)
+
+else:
+    st.markdown("Once a response arrives from n8n, you'll see model outputs, citations, and costs here.")
+
+
+# ============================================================
+# 🪄 Optional: Webhook Receiver
+# ============================================================
+# If you plan to make the Streamlit app directly handle POSTs from n8n
+# (e.g. in production with public URLs), you'll use st.experimental_connection
+# or a small FastAPI wrapper here. For now, the app just displays data
+# from st.session_state['last_response'] which n8n can POST into via REST.
+
+
+# ============================================================
+# 8) Webhook Response Viewer & Model Output Comparison
+# ============================================================
+
+st.markdown("## 📊 LLM Response Viewer & Comparison")
+st.markdown("""
+View and compare structured analysis results returned by your n8n/Perplexity webhook.
+
+Paste one or more JSON responses below (from n8n or API test runs) to inspect:
+- ✅ Clean formatted view
+- 🔍 Model info, cost, and token breakdown
+- 📋 Extracted node-level data
+- 📈 Side-by-side comparison by model variant
+""")
+
+# JSON input area
+_response_input = st.text_area(
+    "Paste raw JSON response(s):",
+    placeholder="Paste the full JSON array returned from n8n...",
+    height=250
+)
+
+if _response_input.strip():
+    import json
+    try:
+        data = json.loads(_response_input)
+        if isinstance(data, dict):
+            data = [data]
+
+        st.success(f"✅ Parsed {len(data)} response object(s).")
+
+        for i, item in enumerate(data):
+            st.divider()
+            st.markdown(f"### 🧩 Response {i+1}")
+
+            body = item.get("body", {})
+            model = body.get("model", "unknown")
+            usage = body.get("usage", {})
+            cost = usage.get("cost", {})
+            msg = (
+                body.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
+
+            st.markdown(f"**Model:** `{model}` | **Tokens:** {usage.get('total_tokens','?')} | **Est. Cost:** ${cost.get('total_cost','?')}")
+
+            # Show structured JSON content (if valid)
+            try:
+                structured = json.loads(msg)
+                st.json(structured)
+            except Exception:
+                st.code(msg, language="json")
+
+            # Optional: summary preview
+            if usage:
+                with st.expander("🔍 Token / Cost Details"):
+                    st.write(usage)
+
+            # Optional: evidence preview
+            citations = body.get("citations", [])
+            if citations:
+                with st.expander("📚 Citations"):
+                    for c in citations:
+                        st.markdown(f"- [{c}]({c})")
+
+        # Compare across models if >1 response
+        if len(data) > 1:
+            st.divider()
+            st.markdown("### ⚖️ Cross-Model Comparison")
+            models = [d.get("body", {}).get("model", "unknown") for d in data]
+            cols = st.columns(len(data))
+            for i, col in enumerate(cols):
+                with col:
+                    st.markdown(f"**{models[i]}**")
+                    msg = (
+                        data[i].get("body", {}).get("choices", [{}])[0].get("message", {}).get("content", "")
+                    )
+                    st.code(msg[:1500] + "..." if len(msg) > 1500 else msg, language="json")
+    except Exception as e:
+        st.error(f"❌ Failed to parse JSON: {e}")
+
+
+# ============================================================
+# 9) Live Webhook Fetcher (Auto-Retrieval from n8n)
+# ============================================================
+
+import requests
+
+st.divider()
+st.markdown("## 🌐 Live Webhook Fetcher")
+st.markdown("""
+Fetch and display **live responses** directly from your n8n workflow webhook.
+
+Enter the webhook URL once and click *Fetch Latest*.  
+The app will call your n8n endpoint, parse the JSON, and render it automatically.
+
+> 💡 *Tip:* Keep your webhook private — only use secure URLs (HTTPS, with auth if enabled).
+""")
+
+# Store webhook URL in session so you don't have to retype it
+if "webhook_url" not in st.session_state:
+    st.session_state["webhook_url"] = ""
+
+webhook_url = st.text_input(
+    "Webhook URL",
+    value=st.session_state["webhook_url"],
+    placeholder="https://fpgconsulting.app.n8n.cloud/webhook/echo_agent",
+)
+
+# Save automatically
+st.session_state["webhook_url"] = webhook_url.strip()
+
+
+# ============================================================
+# 🔀 Test / Live Mode Toggle
+# ============================================================
+
+st.divider()
+st.markdown("## 🧪 Environment Mode Switch")
+st.markdown("""
+Use this toggle to quickly switch between your **Test** and **Live** webhook environments.  
+
+- **Test Mode** → lower cost, sandbox-safe environment  
+- **Live Mode** → production endpoint for real research runs  
+
+> ⚠️ Always confirm you're in the right mode before sending expensive API calls.
+""")
+
+# Default URLs — replace with your real ones
+TEST_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook-test/echo_agent"
+LIVE_WEBHOOK_URL = "https://fpgconsulting.app.n8n.cloud/webhook/echo_agent"
+
+if "env_mode" not in st.session_state:
+    st.session_state["env_mode"] = "test"
+
+# Toggle buttons
+col1, col2 = st.columns([1, 4])
+with col1:
+    env_choice = st.radio(
+        "Mode",
+        ["test", "live"],
+        horizontal=True,
+        index=0 if st.session_state["env_mode"] == "test" else 1,
+        help="Switch between sandbox and production webhook targets."
+    )
+
+# Update mode and URL
+if env_choice != st.session_state["env_mode"]:
+    st.session_state["env_mode"] = env_choice
+    st.session_state["webhook_url"] = (
+        TEST_WEBHOOK_URL if env_choice == "test" else LIVE_WEBHOOK_URL
+    )
+
+# Visual cue
+mode_color = "orange" if env_choice == "test" else "red"
+st.markdown(
+    f"<div style='padding:8px;border-radius:8px;background-color:{mode_color};color:white;text-align:center;'>"
+    f"🧭 Current Mode: <b>{env_choice.upper()}</b>"
+    "</div>",
+    unsafe_allow_html=True,
+)
+
+if webhook_url.strip():
+    if st.button("🔄 Fetch Latest Response from n8n"):
+        with st.spinner("Contacting webhook..."):
+            try:
+                response = requests.get(webhook_url.strip(), timeout=30)
+                if response.status_code == 200:
+                    try:
+                        data = response.json()
+                        st.success(f"✅ Webhook responded with {len(data) if isinstance(data, list) else 1} record(s)")
+                        
+                        # Store for comparison functionality
+                        st.session_state["latest_response"] = data
+                        
+                        # Reuse existing display logic
+                        if isinstance(data, dict):
+                            data = [data]
+
+                        for i, item in enumerate(data):
+                            st.divider()
+                            st.markdown(f"### 🧩 Response {i+1}")
+
+                            body = item.get("body", {})
+                            model = body.get("model", "unknown")
+                            usage = body.get("usage", {})
+                            cost = usage.get("cost", {})
+                            msg = (
+                                body.get("choices", [{}])[0]
+                                .get("message", {})
+                                .get("content", "")
+                            )
+
+                            st.markdown(f"**Model:** `{model}` | **Tokens:** {usage.get('total_tokens','?')} | **Est. Cost:** ${cost.get('total_cost','?')}")
+
+                            # Try to display structured JSON if possible
+                            try:
+                                structured = json.loads(msg)
+                                st.json(structured)
+                            except Exception:
+                                st.code(msg, language="json")
+
+                            citations = body.get("citations", [])
+                            if citations:
+                                with st.expander("📚 Citations"):
+                                    for c in citations:
+                                        st.markdown(f"- [{c}]({c})")
+
+                    except Exception as parse_err:
+                        st.error(f"⚠️ Could not parse JSON: {parse_err}")
+                        st.text(response.text[:1000])
+                else:
+                    st.error(f"❌ Webhook returned status {response.status_code}")
+                    st.text(response.text[:1000])
+
+            except requests.exceptions.RequestException as e:
+                st.error(f"❌ Error fetching from webhook: {e}")
+
+else:
+    st.info("Enter your n8n webhook URL above to fetch live responses automatically.")
+
+
+# ============================================================
+# 🌐 Live Webhook Receiver
+# ============================================================
+
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+# --- Config ---
+WEBHOOK_PORT = 8502   # you can change this if your main Streamlit is on 8501
+WEBHOOK_PATH = "/n8n-webhook"
+
+# Thread-safe storage
+shared_data = {"latest": None}
+
+class WebhookHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        if self.path != WEBHOOK_PATH:
+            self.send_response(404)
+            self.end_headers()
+            return
+
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+
+        try:
+            import json
+            parsed = json.loads(body)
+            shared_data["latest"] = parsed
+
+            # Acknowledge
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+
+        except Exception as e:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(str(e).encode())
+
+
+# Start server thread (if not already running)
+def start_webhook_server():
+    server = HTTPServer(("0.0.0.0", WEBHOOK_PORT), WebhookHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return f"http://localhost:{WEBHOOK_PORT}{WEBHOOK_PATH}"
+
+webhook_url = start_webhook_server()
+
+st.divider()
+st.markdown("## 🌐 Live Webhook Receiver")
+st.info(f"Listening for POSTs at: `{webhook_url}`")
+
+if shared_data["latest"]:
+    st.success("✅ Live webhook data received!")
+    st.json(shared_data["latest"])
+else:
+    st.warning("No webhook data yet — waiting for n8n to POST results here.")
+
+st.caption("Use this endpoint as the `POST` target in your n8n Respond to Webhook node.")
+
+
+# ============================================================
+# 10) Compare Previous vs Latest Response
+# ============================================================
+
+import difflib
+
+if "last_webhook_response" not in st.session_state:
+    st.session_state["last_webhook_response"] = None
+
+st.divider()
+st.markdown("## 🧮 Compare Previous vs Latest Response")
+st.markdown("""
+This section compares your **latest fetched** webhook response with the **previous** one.
+
+Useful when testing prompt refinements, model changes, or retrieval adjustments — to see what actually changed in the structure or output.
+""")
+
+if "latest_response" in st.session_state:
+    prev = st.session_state.get("last_webhook_response")
+    latest = st.session_state["latest_response"]
+
+    if prev is not None:
+        prev_str = json.dumps(prev, indent=2, sort_keys=True)
+        latest_str = json.dumps(latest, indent=2, sort_keys=True)
+
+        diff_lines = list(
+            difflib.unified_diff(
+                prev_str.splitlines(),
+                latest_str.splitlines(),
+                fromfile="Previous",
+                tofile="Latest",
+                lineterm=""
+            )
+        )
+
+        if diff_lines:
+            st.markdown("### 🔍 Differences Detected")
+            st.code("\n".join(diff_lines[:5000]), language="diff")
+            st.info("🧠 Tip: '+' means new or changed lines, '-' means removed content.")
+        else:
+            st.success("✅ No differences detected — output identical to previous run.")
+
+    else:
+        st.info("No previous response cached yet — fetch twice to start comparison.")
+
+    # Always store the latest as "last" for next cycle
+    st.session_state["last_webhook_response"] = st.session_state["latest_response"]
+
+else:
+    st.info("Fetch at least one webhook response to enable comparison.")
